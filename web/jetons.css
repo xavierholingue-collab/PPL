@@ -1,0 +1,117 @@
+/* =========================================================================
+   PPL — jetons de conception
+   Une couleur ne s'écrit qu'ici. Les autres feuilles n'utilisent que ces
+   variables, pour que le thème sombre et les retouches restent cohérents.
+
+   D'où viennent les couleurs : la table (bleu ITTF), ses lignes blanches,
+   la balle orange des soirées loisir, et le marqueur à volets des clubs.
+   ========================================================================= */
+
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("polices/barlow-condensed-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("polices/barlow-condensed-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("polices/atkinson-hyperlegible-next.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  /* La salle et le papier */
+  --fond: #eef2f7;
+  --papier: #ffffff;
+  --encre: #14233a;
+  --encre-douce: #4a5a70;
+  --trait: #d5dde8;
+  --trait-fort: #b9c6d6;
+
+  /* La table */
+  --table: #1c4f86;
+  --table-appuye: #153d69;
+  --sur-table: #ffffff;
+  --table-pale: #e3ecf7;
+  /* Liens, boutons secondaires, onglet ouvert : le bleu de la table, ou
+     un bleu clair en thème sombre, où le bleu de la table manque de contraste. */
+  --accent-texte: #1c4f86;
+
+  /* La balle : repère, jamais texte courant */
+  --balle: #f08a24;
+  --balle-contour: #c25e00;
+
+  /* Le marqueur à volets */
+  --marqueur: #101c2c;
+  --marqueur-pli: #26364d;
+  --chiffre: #f7f4ec;
+
+  --victoire: #1e7a4c;
+  --victoire-pale: #e2f2ea;
+  --alerte: #b3261e;
+  --alerte-pale: #fbe9e7;
+  --sur-alerte: #ffffff;
+
+  /* Typographie */
+  --police-texte: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --police-chiffres: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+
+  --t-0: 0.8rem;
+  --t-1: 1rem;      /* 17 px : le texte courant, lisible au gymnase */
+  --t-2: 1.25rem;
+  --t-3: 1.56rem;
+  --t-4: 1.95rem;
+  --t-5: 2.44rem;
+  --t-6: 3.05rem;
+
+  /* Espacements, sur une base de 4 px */
+  --e-1: 0.25rem;
+  --e-2: 0.5rem;
+  --e-3: 0.75rem;
+  --e-4: 1rem;
+  --e-5: 1.5rem;
+  --e-6: 2rem;
+  --e-7: 3rem;
+
+  --rayon-petit: 6px;
+  --rayon: 10px;
+  --largeur: 34rem;
+  --cible: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) {
+    color-scheme: dark;
+    --fond: #0e1a2a;
+    --papier: #15243a;
+    --encre: #e6edf6;
+    --encre-douce: #9fb3cc;
+    --trait: #2a3b55;
+    --trait-fort: #3a4f6d;
+    --table: #2a65a8;
+    --table-appuye: #22558f;
+    --table-pale: #1b304d;
+    --accent-texte: #9cc3f0;
+    --balle: #f59a3d;
+    --balle-contour: #f59a3d;
+    --marqueur: #070f1a;
+    --marqueur-pli: #1d2c42;
+    --victoire: #4cc38a;
+    --victoire-pale: #12301f;
+    --alerte: #ff8a80;
+    --alerte-pale: #3a1715;
+    --sur-alerte: #2a0b09;
+  }
+}

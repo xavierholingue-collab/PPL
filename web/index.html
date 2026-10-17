@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ping Pong Loisir</title>
+  <meta name="description" content="Soirées, poules et classement du championnat de Ping Pong Loisir.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1c4f86">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preload" href="polices/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="polices/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="jetons.css">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="bandeau" class="bandeau-env" hidden></div>
+  <div id="hors-ligne" class="bandeau-hors-ligne" role="status" hidden>Hors connexion : l’appli fonctionne, les points s’enregistreront au retour du réseau.</div>
+  <header class="entete">
+    <div class="entete-interieur">
+      <a class="entete-club" href="#/classement">Ping Pong Loisir</a>
+      <span class="entete-saison" id="saison"></span>
+    </div>
+  </header>
+
+  <main id="vue" class="vue" tabindex="-1">
+    <p class="chargement">Chargement…</p>
+  </main>
+
+  <nav class="onglets" aria-label="Rubriques">
+    <ul>
+      <li><a href="#/classement" data-rubrique="classement"><span data-icone="classement"></span>Classement</a></li>
+      <li><a href="#/soirees" data-rubrique="soirees"><span data-icone="soirees"></span>Soirées</a></li>
+      <li><a href="#/joueurs" data-rubrique="joueurs"><span data-icone="joueurs"></span>Joueurs</a></li>
+      <li><a href="#/organisateur" data-rubrique="organisateur"><span data-icone="organisateur"></span><span id="libelle-orga">Organisateur</span></a></li>
+    </ul>
+  </nav>
+
+  <div id="annonce" class="annonce" role="status" aria-live="polite"></div>
+
+  <noscript><p class="vide">Cette application a besoin de JavaScript pour afficher le classement.</p></noscript>
+</body>
+</html>

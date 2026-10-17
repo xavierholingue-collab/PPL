@@ -1,0 +1,9 @@
+# Fins de ligne : LF partout. Le dossier source est sous Windows (OneDrive),
+# mais tout s'exécute sous Linux — WSL, le VPS, GitHub Actions — où un script
+# en CRLF échoue sur « $'\r' : commande introuvable ».
+* text=auto eol=lf
+
+# Binaires : ni conversion, ni comparaison ligne à ligne.
+*.png   binary
+*.woff2 binary
+*.ods   binary

@@ -1,0 +1,144 @@
+# =========================================================================
+# Contrôles de PPL, à chaque envoi sur GitHub
+#
+# La pile tourne ici comme sur le serveur : PostgreSQL 18, schéma appliqué
+# par le rôle de l'application (ni superutilisateur ni BYPASSRLS) et rejoué
+# deux fois, API Node 22 lancée avec son verrou, puis les contrôles de
+# test-api.mjs, écritures comprises.
+#
+# LES DONNÉES DU CLUB N'ENTRENT JAMAIS DANS LE DÉPÔT : la base de contrôle
+# est amorcée avec tests/amorce-controle.json, des joueurs inventés.
+#
+# Pas de livraison ici : elle part du poste (deploiement/livrer-ppl.sh).
+# =========================================================================
+
+name: Contrôles
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Le jeton de la chaîne ne sert qu'à lire le dépôt.
+permissions:
+  contents: read
+
+concurrency:
+  group: controles-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controles:
+    name: Contrôles
+    # Coureur épinglé, comme sur Biblio : « ubuntu-latest » passe à 26.04
+    # progressivement entre le 19 octobre et le 19 novembre 2026, et deux
+    # exécutions du même commit ne tourneraient pas forcément sur le même
+    # système. Repli possible : ubuntu-24.04.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+
+    # PostgreSQL 18, comme sur le VPS depuis le 6 septembre 2026.
+    services:
+      db:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: controle
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+        ports: ['5432:5432']
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+
+    steps:
+      # Actions épinglées sur l'empreinte de leur commit : une étiquette se
+      # déplace, une empreinte non. Le numéro de version reste en commentaire.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Outils des contrôles, selon le verrou
+        run: npm ci --no-audit --no-fund
+
+      - name: Syntaxe de l'API
+        run: for f in api/*.mjs api/server.js; do node --check "$f"; done
+
+      - name: Règles de jeu, session, fichiers hors connexion
+        run: node --test tests/regles.test.mjs tests/securite.test.mjs tests/coquille.test.mjs
+
+      - name: Types (JSDoc vérifié en mode strict)
+        run: npx --no-install tsc -p jsconfig.json && npx --no-install tsc -p jsconfig.sw.json
+
+      # ShellCheck en version fixe, vérifiée par son empreinte : une version
+      # plus récente de l'outil ne doit pas faire tomber la chaîne un matin
+      # sans que rien n'ait changé ici.
+      - name: Scripts de déploiement (ShellCheck 0.11.0)
+        timeout-minutes: 3
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/sc.tar.xz" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  ${RUNNER_TEMP}/sc.tar.xz" | sha256sum -c -
+          tar -xJf "${RUNNER_TEMP}/sc.tar.xz" -C "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/shellcheck-v0.11.0/shellcheck" -S style deploiement/*.sh
+
+      # Comme le déployeur : le schéma est appliqué par le rôle de
+      # l'application. Puis une seconde fois, car chaque livraison le rejoue.
+      - name: Base de contrôle, schéma rejoué deux fois
+        run: |
+          PGUSER=postgres PGPASSWORD=controle psql -v ON_ERROR_STOP=1 -q \
+            -c "create role ppl login password 'controle' nosuperuser nocreatedb nocreaterole nobypassrls" \
+            -c "create database ppl owner ppl"
+          for passe in 1 2; do
+            for f in db/*.sql; do
+              PGUSER=ppl PGPASSWORD=controle psql -d ppl -v ON_ERROR_STOP=1 -q -f "$f"
+            done
+            echo "schéma appliqué (passe ${passe})"
+          done
+
+      - name: Dépendance de l'API, selon le verrou
+        working-directory: api
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Amorce de contrôle (joueurs inventés)
+        working-directory: api
+        env: { PGUSER: ppl, PGPASSWORD: controle, PGDATABASE: ppl }
+        run: node amorcer.mjs ../tests/amorce-controle.json
+
+      - name: Démarrer l'API
+        working-directory: api
+        env:
+          PORT: '3020'
+          HOTE: 127.0.0.1
+          PGUSER: ppl
+          PGPASSWORD: controle
+          PGDATABASE: ppl
+          MOT_DE_PASSE: mot-de-passe-de-controle
+          SECRET_SESSION: secret-de-controle-suffisamment-long-pour-passer
+          ENVIRONNEMENT: local
+        run: |
+          nohup node server.js > "${RUNNER_TEMP}/api.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3020/api/sante >/dev/null && exit 0
+            sleep 1
+          done
+          echo "l'API n'a pas démarré :"
+          cat "${RUNNER_TEMP}/api.log"
+          exit 1
+
+      - name: Contrôles de l'API, écritures comprises
+        env:
+          BASE: http://127.0.0.1:3020
+          MOT_DE_PASSE: mot-de-passe-de-controle
+          ECRITURES: '1'
+        run: node --test api/test-api.mjs
+
+      - name: Journal de l'API
+        if: always()
+        run: cat "${RUNNER_TEMP}/api.log" 2>/dev/null || true

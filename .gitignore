@@ -1,0 +1,38 @@
+# =========================================================================
+# Ce qui ne doit jamais partir chez GitHub — dépôt PPL.
+#
+# Second filet : assembler-depot.sh ne recopie déjà pas ces fichiers, et
+# vérifie avant tout envoi qu'aucun secret ni aucun nom du club n'est passé.
+# =========================================================================
+
+# --- Données des personnes -------------------------------------------------
+#
+# amorce/amorce.json : les joueurs du club (prénom + initiale) et leurs
+# points, repris du fichier de David. Ils ne servent qu'à la première
+# livraison, faite depuis le dossier du poste. Les contrôles utilisent
+# tests/amorce-controle.json : des joueurs inventés.
+amorce/
+*.dump
+*.ods
+*.csv
+
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.*
+*.env
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# --- Dépendances, paquets, journaux ----------------------------------------
+node_modules/
+*.tar.gz
+*.log
+
+# --- Système ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*:Zone.Identifier
+~$*

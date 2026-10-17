@@ -1,0 +1,45 @@
+{
+  "_lisez_moi": [
+    "Jeu d'amorce SYNTHÉTIQUE pour les contrôles (GitHub Actions et poste) : joueurs et résultats inventés.",
+    "Les vraies données du club (amorce/amorce.json) n'entrent jamais dans le dépôt.",
+    "Les deux premières soirées mettent deux joueurs à égalité au semestre 1 : le rang partagé (1, 1, 3) est ainsi éprouvé."
+  ],
+  "saison": "2026/2027",
+  "joueurs": [
+    { "cle": 1, "nom": "Alix A." },
+    { "cle": 2, "nom": "Basile B." },
+    { "cle": 3, "nom": "Capucine C." },
+    { "cle": 4, "nom": "Désiré D." },
+    { "cle": 5, "nom": "Eugénie E." },
+    { "cle": 6, "nom": "Firmin F." }
+  ],
+  "soirees": [
+    {
+      "date": "2026-09-02", "semestre": 1, "libelle": null, "compte": true, "format": "classement",
+      "etat": { "version": 1, "mode": "classement", "presents": [1, 2, 3, 4, 5, 6], "ordre": [1, 2, 3, 4, 5, 6] },
+      "resultats": [
+        { "cle": 1, "points": 6, "place": 1 }, { "cle": 2, "points": 5, "place": 2 },
+        { "cle": 3, "points": 4, "place": 3 }, { "cle": 4, "points": 3, "place": 4 },
+        { "cle": 5, "points": 2, "place": 5 }, { "cle": 6, "points": 1, "place": 6 }
+      ]
+    },
+    {
+      "date": "2026-09-09", "semestre": 1, "libelle": null, "compte": true, "format": "libre",
+      "resultats": [
+        { "cle": 2, "points": 6, "place": null }, { "cle": 1, "points": 5, "place": null },
+        { "cle": 3, "points": 4, "place": null }, { "cle": 4, "points": 4, "place": null },
+        { "cle": 6, "points": 2, "place": null }
+      ]
+    },
+    { "date": "2026-10-07", "semestre": 1, "libelle": "AG", "compte": false },
+    { "date": "2026-10-21", "semestre": 1, "libelle": null, "compte": true },
+    {
+      "date": "2027-01-13", "semestre": 2, "libelle": null, "compte": true, "format": "libre",
+      "resultats": [
+        { "cle": 3, "points": 3, "place": null }, { "cle": 5, "points": 2, "place": null },
+        { "cle": 6, "points": 1, "place": null }
+      ]
+    },
+    { "date": "2027-03-17", "semestre": 2, "libelle": "Relâche", "compte": false }
+  ]
+}

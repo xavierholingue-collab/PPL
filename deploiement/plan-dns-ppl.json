@@ -1,0 +1,35 @@
+{
+  "_lisez_moi": [
+    "UN SEUL ENREGISTREMENT : ppl.y-factor.fr vers le VPS.",
+    "",
+    "Il s'applique avec le script qui a déjà servi pour lisia, dans InfraLWS :",
+    "",
+    "  node zone-lws-appliquer.mjs <chemin>/PPL/app/deploiement/plan-dns-ppl.json              (montre)",
+    "  node zone-lws-appliquer.mjs <chemin>/PPL/app/deploiement/plan-dns-ppl.json --appliquer  (écrit)",
+    "",
+    "Même IP que lisia, app et api : c'est Caddy qui distingue les sites par le",
+    "nom demandé. Vérifiez à l'écran, avant de confirmer, que la capture de zone",
+    "montre bien 195.110.35.206 pour les noms déjà servis.",
+    "",
+    "TTL de 3600 et rien d'autre : c'est la valeur déjà acceptée par l'API LWS",
+    "pour lisia le 22/08/2026 (300 avait été refusé par un « Invalid input »).",
+    "",
+    "Sans le script : dans le panneau LWS, zone y-factor.fr, ajouter un",
+    "enregistrement A « ppl » vers 195.110.35.206, TTL 3600.",
+    "",
+    "Pour vérifier sans attendre les caches :",
+    "  dig +short ppl.y-factor.fr @ns17.lwsdns.com",
+    "",
+    "AUCUN SECRET DANS CE FICHIER : un nom de sous-domaine et une IP publique."
+  ],
+  "domaine": "y-factor.fr",
+  "ajouter": [
+    {
+      "_pourquoi": "Maquette PPL (Ping Pong Loisir), servie par le même VPS que lisia. Caddy distingue les noms ; le DNS les envoie au même endroit.",
+      "type": "A",
+      "name": "ppl",
+      "value": "195.110.35.206",
+      "ttl": 3600
+    }
+  ]
+}
