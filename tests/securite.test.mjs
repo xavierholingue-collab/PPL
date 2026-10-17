@@ -38,6 +38,21 @@ test('mot de passe : comparaison exacte, entrées étranges refusées', () => {
   assert.equal(motDePasseCorrect('x'.repeat(201), 'x'.repeat(201)), false);
 });
 
+test('mot de passe fabriqué : minuscules, espaces et tirets tolérés, rien d’autre', () => {
+  const fabrique = 'ABCD-EFGH-JKMN-PQ23'; // inventé, même forme que ceux de l'installeur
+  for (const saisie of [fabrique, fabrique.toLowerCase(), 'abcdefghjkmnpq23', ' ABCD EFGH JKMN PQ23 ', 'Abcd-Efgh-Jkmn-Pq23']) {
+    assert.equal(motDePasseCorrect(saisie, fabrique), true, `« ${saisie} » accepté`);
+  }
+  for (const saisie of ['ABCD-EFGH-JKMN-PQ2', 'ABCD-EFGH-JKMN-PQ233', 'ABCD-EFGH-JKMN-PQ24', 'ABCD_EFGH_JKMN_PQ23', '']) {
+    assert.equal(motDePasseCorrect(saisie, fabrique), false, `« ${saisie} » refusé`);
+  }
+  // Un mot de passe choisi à la main garde la comparaison exacte.
+  assert.equal(motDePasseCorrect('mon-mot-de-passe', 'Mon-Mot-De-Passe'), false);
+  assert.equal(motDePasseCorrect('MonMotDePasse', 'Mon-Mot-De-Passe'), false);
+  // Les lettres absentes de l'alphabet (I, L, O) font sortir de la forme fabriquée.
+  assert.equal(motDePasseCorrect('abcd-efgh-ijkl-mnop', 'ABCD-EFGH-IJKL-MNOP'), false);
+});
+
 test('cookie : préfixe __Host- et Secure en https, HttpOnly et SameSite=Strict toujours', () => {
   assert.equal(nomCookie(true), '__Host-ppl_session');
   const c = cookieSession('v', { securise: true, maxAge: 10 });

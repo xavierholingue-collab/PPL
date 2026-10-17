@@ -69,15 +69,32 @@ export function jetonValide(jeton, secret, maintenant = Math.floor(Date.now() / 
 }
 
 /**
+ * La forme des mots de passe fabriqués par l'installeur : quatre groupes de
+ * quatre, dans l'alphabet sans caractère ambigu (ni I, ni L, ni O, ni 0, ni 1).
+ */
+const FORME_FABRIQUEE = /^[A-HJKMNP-Z2-9]{4}(-[A-HJKMNP-Z2-9]{4}){3}$/;
+
+/** @param {string} s */
+const sansMiseEnForme = (s) => s.toUpperCase().replace(/[\s-]/g, '');
+
+/**
  * Comparaison en temps constant : on compare les empreintes, de longueur
  * fixe, pour ne rien laisser deviner de la longueur du mot de passe.
+ *
+ * SAISIE TOLÉRANTE pour un mot de passe fabriqué par l'installeur, et pour
+ * lui seul : minuscules, espaces et tirets n'y changent rien. Sur un
+ * téléphone, seize majuscules et trois tirets dans un champ masqué sont la
+ * meilleure façon de se tromper. La sécurité est la même : son alphabet n'a
+ * que des majuscules, et les tirets sont à place fixe. Un mot de passe
+ * choisi à la main reste comparé au caractère près.
  * @param {unknown} saisi
  * @param {string} attendu
  */
 export function motDePasseCorrect(saisi, attendu) {
   if (typeof saisi !== 'string' || saisi.length > 200) return false;
-  const a = createHash('sha256').update(saisi, 'utf8').digest();
-  const b = createHash('sha256').update(attendu, 'utf8').digest();
+  const tolerant = FORME_FABRIQUEE.test(attendu);
+  const a = createHash('sha256').update(tolerant ? sansMiseEnForme(saisi) : saisi, 'utf8').digest();
+  const b = createHash('sha256').update(tolerant ? sansMiseEnForme(attendu) : attendu, 'utf8').digest();
   return timingSafeEqual(a, b);
 }
 

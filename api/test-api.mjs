@@ -187,6 +187,18 @@ test('le cookie de session est HttpOnly, SameSite=Strict', async () => {
   assert.equal(s.json.organisateur, true);
 });
 
+// Relevé le 17/10/2026 : tapé en minuscules sur le serveur réel, le mot de
+// passe fabriqué était refusé. Pour cette forme-là, la saisie est tolérante.
+const FABRIQUE = /^[A-HJKMNP-Z2-9]{4}(-[A-HJKMNP-Z2-9]{4}){3}$/.test(MOT_DE_PASSE);
+test('mot de passe fabriqué : accepté en minuscules et sans tirets', {
+  skip: !FABRIQUE && 'seulement pour un mot de passe fabriqué par l’installeur',
+}, async () => {
+  for (const variante of [MOT_DE_PASSE.toLowerCase(), MOT_DE_PASSE.replaceAll('-', '')]) {
+    const r = await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: variante } });
+    assert.equal(r.statut, 204, 'variante de saisie acceptée');
+  }
+});
+
 test('les saisies mal formées sont refusées avant la base', async () => {
   const c = await connexion();
   /** @type {[string, unknown, number][]} */
