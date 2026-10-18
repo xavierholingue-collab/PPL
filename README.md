@@ -140,6 +140,8 @@ scripts et l'API complète, écritures comprises, sur une base de contrôle.
 
 - Les réponses de David (barème au-delà de 17 joueurs, soirées spéciales,
   autres formats) ; les points `À CONFIRMER` sont marqués dans `web/js/regles.js`.
-- Ajouter la base `ppl` à la sauvegarde nocturne (dossier InfraLWS).
+- Sauvegarde : la sauvegarde de nuit du VPS prend toutes les bases, donc
+  `ppl` aussi (rien à déclarer). À vérifier une fois dans le manifeste du
+  lendemain de l'installation.
 - Si la maquette devient l'outil du club : livraison automatique depuis
   GitHub, avec une recette avant la production, comme Biblio.

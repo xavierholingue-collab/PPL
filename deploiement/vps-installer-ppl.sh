@@ -438,7 +438,14 @@ else
   ok "${SITE} résout vers ${resolu}"
 fi
 info "API de PPL sur 127.0.0.1:${PORT}, derrière Caddy"
-afaire "ajouter la base « ${BASE} » à la sauvegarde nocturne (/var/backups/outils/applications.d/, sur le modèle de biblio)"
+# La sauvegarde de nuit (/usr/local/bin/sauvegarder, cron de 3 h 45) balaie
+# TOUTES les bases du serveur : rien à déclarer pour PPL, qui n'a aucun
+# fichier de données hors de sa base. On le vérifie au lieu de le supposer.
+if grep -q 'FROM pg_database' /usr/local/bin/sauvegarder 2>/dev/null; then
+  ok "sauvegarde de nuit : la base « ${BASE} » est prise d'office (toutes les bases y passent)"
+else
+  afaire "vérifier que la sauvegarde de nuit prend la base « ${BASE} » (/etc/sauvegarde/applications.d/)"
+fi
 
 echo
 echo "== FIN de l'installation =="
