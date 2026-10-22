@@ -4,7 +4,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleSession, emettreJeton, jetonValide, motDePasseCorrect, nomCookie, cookieSession, origineAdmise, Limiteur } from '../api/securite.mjs';
+import {
+  cleSession, emettreJeton, jetonValide, motDePasseCorrect, nomCookie, cookieSession, origineAdmise, Limiteur,
+  empreinteMotDePasse, empreinteCorrespond,
+} from '../api/securite.mjs';
+import { validerChangementMotDePasse } from '../api/validation.mjs';
 
 const SECRET = 'un-secret-de-controle-suffisamment-long-0123456789';
 
@@ -51,6 +55,31 @@ test('mot de passe fabriqué : minuscules, espaces et tirets tolérés, rien d�
   assert.equal(motDePasseCorrect('MonMotDePasse', 'Mon-Mot-De-Passe'), false);
   // Les lettres absentes de l'alphabet (I, L, O) font sortir de la forme fabriquée.
   assert.equal(motDePasseCorrect('abcd-efgh-ijkl-mnop', 'ABCD-EFGH-IJKL-MNOP'), false);
+});
+
+test('mot de passe choisi dans l’appli : empreinte scrypt salée, comparaison exacte', async () => {
+  const e1 = await empreinteMotDePasse('Ping-pong 2026!');
+  const e2 = await empreinteMotDePasse('Ping-pong 2026!');
+  assert.match(e1, /^scrypt\$15\$8\$3\$[\w-]+\$[\w-]+$/);
+  assert.notEqual(e1, e2, 'un sel neuf à chaque fois');
+  assert.ok(!e1.includes('Ping'), 'jamais en clair');
+  assert.equal(await empreinteCorrespond('Ping-pong 2026!', e1), true);
+  assert.equal(await empreinteCorrespond('ping-pong 2026!', e1), false, 'la casse compte');
+  assert.equal(await empreinteCorrespond('Ping-pong 2026', e1), false);
+  assert.equal(await empreinteCorrespond(undefined, e1), false);
+  assert.equal(await empreinteCorrespond('x', 'texte-quelconque'), false, 'empreinte illisible : personne ne passe');
+  assert.equal(await empreinteCorrespond('x', 'scrypt$40$8$3$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'), false, 'réglages hors bornes refusés');
+});
+
+test('nouveau mot de passe : 8 caractères au moins, rien d’invisible', () => {
+  const ok = (/** @type {string} */ nouveau) => validerChangementMotDePasse({ actuel: 'a', nouveau }).ok;
+  assert.equal(ok('PPL2026!'), true, '8 caractères');
+  assert.equal(ok('PPL2026'), false, '7 caractères');
+  assert.equal(ok('éèàçùêôî'), true, '8 caractères accentués');
+  assert.equal(ok(' PPL2026!'), false, 'espace au début');
+  assert.equal(ok('PPL2026!\t'), false, 'tabulation');
+  assert.equal(ok('x'.repeat(201)), false);
+  assert.equal(validerChangementMotDePasse({ nouveau: 'PPL2026!' }).ok, false, 'l’actuel est exigé');
 });
 
 test('cookie : préfixe __Host- et Secure en https, HttpOnly et SameSite=Strict toujours', () => {

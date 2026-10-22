@@ -16,14 +16,16 @@ import pg from 'pg';
 import { lireConfig } from './config.mjs';
 import {
   nomCookie, cleSession, emettreJeton, jetonValide, motDePasseCorrect, lireCookies, cookieSession,
-  Limiteur, origineAdmise,
+  Limiteur, origineAdmise, empreinteMotDePasse, empreinteCorrespond,
 } from './securite.mjs';
 import {
   validerDate, validerNouveauJoueur, validerModificationJoueur, validerSoiree, validerFusion,
+  validerChangementMotDePasse,
 } from './validation.mjs';
 import {
   saisonCourante, bornesSaison, listeSoirees, classement, listeJoueurs, creerJoueur,
   modifierJoueur, fusionnerJoueurs, soireeParDate, enregistrerSoiree, effacerResultats,
+  lireEmpreinte, enregistrerEmpreinte,
 } from './donnees.mjs';
 import { versCsv, versOds, preparerTableau } from './export.mjs';
 
@@ -56,8 +58,23 @@ const pool = new pg.Pool({
 });
 pool.on('error', (e) => console.error('pg :', e.message));
 
+// LE MOT DE PASSE EN VIGUEUR : celui choisi dans l'appli s'il y en a un
+// (empreinte en base, lue au démarrage), sinon celui de /etc/ppl/env.
+/** @type {string | null} */
+let empreinte = null;
 // Clé de signature des sessions : liée au mot de passe (voir securite.mjs).
-const CLE_SESSION = cleSession(config.secret, config.motDePasse);
+// L'empreinte porte un sel neuf à chaque changement : changer le mot de
+// passe ferme toutes les sessions, même pour remettre le même.
+let CLE_SESSION = cleSession(config.secret, config.motDePasse);
+/** @param {string | null} e */
+function adopterEmpreinte(e) {
+  empreinte = e;
+  CLE_SESSION = cleSession(config.secret, e ?? config.motDePasse);
+}
+/** @param {unknown} saisi */
+async function motDePasseValide(saisi) {
+  return empreinte ? empreinteCorrespond(saisi, empreinte) : motDePasseCorrect(saisi, config.motDePasse);
+}
 const COOKIE = nomCookie(config.cookieSecurise);
 
 const limiteur = new Limiteur();
@@ -206,12 +223,42 @@ const ROUTES = [
         return;
       }
       const saisi = corps && typeof corps === 'object' ? /** @type {Record<string, unknown>} */ (corps).mot_de_passe : undefined;
-      if (!motDePasseCorrect(saisi, config.motDePasse)) {
+      if (!(await motDePasseValide(saisi))) {
         limiteur.echec(qui);
         repondre(res, 401, { erreur: 'mot de passe incorrect' });
         return;
       }
       limiteur.reussite(qui);
+      const duree = config.dureeSessionJours * 86400;
+      repondre(res, 204, undefined, {
+        'Set-Cookie': cookieSession(emettreJeton(CLE_SESSION, duree), { securise: config.cookieSecurise, maxAge: duree }),
+      });
+    },
+  },
+  {
+    // L'organisateur change le mot de passe : il redonne l'actuel (un
+    // téléphone resté connecté ne suffit pas), essais limités comme à la
+    // connexion. Les autres sessions tombent ; celle-ci repart aussitôt.
+    methode: 'POST', motif: /^\/api\/mot-de-passe$/, organisateur: true, corps: true,
+    gestion: async ({ req, res, corps }) => {
+      const qui = adresse(req);
+      const attente = limiteur.bloque(qui);
+      if (attente > 0) {
+        repondre(res, 429, { erreur: `trop d’essais, réessayez dans ${Math.ceil(attente / 60000)} min` },
+          { 'Retry-After': String(Math.ceil(attente / 1000)) });
+        return;
+      }
+      const v = validerChangementMotDePasse(corps);
+      if (!v.ok) throw new ErreurHttp(400, v.erreur);
+      if (!(await motDePasseValide(v.valeur.actuel))) {
+        limiteur.echec(qui);
+        throw new ErreurHttp(403, 'mot de passe actuel incorrect');
+      }
+      limiteur.reussite(qui);
+      if (await motDePasseValide(v.valeur.nouveau)) throw new ErreurHttp(400, 'c’est déjà le mot de passe actuel');
+      const nouvelle = await empreinteMotDePasse(v.valeur.nouveau);
+      await enregistrerEmpreinte(pool, nouvelle);
+      adopterEmpreinte(nouvelle);
       const duree = config.dureeSessionJours * 86400;
       repondre(res, 204, undefined, {
         'Set-Cookie': cookieSession(emettreJeton(CLE_SESSION, duree), { securise: config.cookieSecurise, maxAge: duree }),
@@ -412,6 +459,7 @@ process.on('unhandledRejection', (e) => console.error('promesse rejetée sans tr
 // plutôt que de répondre 500 à chaque requête.
 try {
   await pool.query('select 1 from saisons limit 1');
+  adopterEmpreinte(await lireEmpreinte(pool));
 } catch (e) {
   console.error(`PPL refuse de démarrer — base injoignable ou schéma absent : ${/** @type {Error} */ (e).message}`);
   process.exit(1);

@@ -69,6 +69,30 @@ export function validerNouveauJoueur(corps) {
   return nom.ok ? { ok: true, valeur: { nom: nom.valeur } } : nom;
 }
 
+/** Longueur minimale d'un mot de passe choisi dans l'appli (demande de Xavier, 22/10/2026). */
+export const LONGUEUR_MIN_MOT_DE_PASSE = 8;
+
+/**
+ * Changement du mot de passe organisateur : { actuel, nouveau }.
+ * Le nouveau : au moins 8 caractères, 200 au plus, sans caractère de
+ * contrôle ni espace au début ou à la fin (invisible sur un téléphone, il
+ * rendrait le mot de passe impossible à retaper).
+ * @param {unknown} corps
+ * @returns {Resultat<{ actuel: string, nouveau: string }>}
+ */
+export function validerChangementMotDePasse(corps) {
+  if (!objet(corps)) return { ok: false, erreur: 'objet attendu' };
+  const { actuel, nouveau } = corps;
+  if (typeof actuel !== 'string' || actuel.length === 0 || actuel.length > 200) return { ok: false, erreur: 'mot de passe actuel manquant' };
+  if (typeof nouveau !== 'string') return { ok: false, erreur: 'nouveau mot de passe manquant' };
+  const longueur = [...nouveau].length;
+  if (longueur < LONGUEUR_MIN_MOT_DE_PASSE) return { ok: false, erreur: `le nouveau mot de passe doit faire au moins ${LONGUEUR_MIN_MOT_DE_PASSE} caractères` };
+  if (nouveau.length > 200) return { ok: false, erreur: 'le nouveau mot de passe est trop long (200 caractères au plus)' };
+  if (/[\u0000-\u001f\u007f]/.test(nouveau)) return { ok: false, erreur: 'caractère invisible dans le nouveau mot de passe' };
+  if (nouveau !== nouveau.trim()) return { ok: false, erreur: 'pas d’espace au début ni à la fin du mot de passe' };
+  return { ok: true, valeur: { actuel, nouveau } };
+}
+
 /**
  * Fusion de deux joueurs : { vers }, le joueur qu'on garde (autre que celui
  * qu'on fusionne).

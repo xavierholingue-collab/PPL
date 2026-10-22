@@ -63,3 +63,12 @@ create table if not exists journal (
   action  text not null,
   detail  jsonb
 );
+
+-- Le mot de passe organisateur CHOISI DANS L'APPLI, sous forme d'empreinte
+-- scrypt (jamais en clair). Une seule ligne au plus. Sans ligne, c'est celui
+-- de /etc/ppl/env qui vaut : supprimer la ligne y ramène (oubli).
+create table if not exists organisateur (
+  id          smallint primary key default 1 check (id = 1),
+  empreinte   text not null check (empreinte like 'scrypt$%'),
+  modifie_le  timestamptz not null default now()
+);

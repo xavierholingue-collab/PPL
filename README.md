@@ -33,6 +33,17 @@ l'application avec les données du fichier de David. **Le mot de passe
 organisateur s'affiche une seule fois à la fin** : c'est celui à donner à David.
 Pour le relire, en root sur le serveur : `grep MOT_DE_PASSE /etc/ppl/env`.
 
+L'organisateur peut ensuite le **changer dans l'appli** (onglet Organisateur,
+« Changer le mot de passe ») : il redonne l'actuel, en choisit un de
+8 caractères au moins ; les autres téléphones devront se reconnecter. Le
+nouveau n'est gardé en base que sous forme d'empreinte (scrypt) et prend le
+pas sur celui de `/etc/ppl/env`. **En cas d'oubli**, retour à celui de
+l'installation, affiché à l'écran :
+
+```bash
+bash /mnt/c/Users/xavie/OneDrive/Doc/Claude/Projects/PPL/app/deploiement/reinitialiser-mdp-ppl.sh
+```
+
 **3. Les livraisons suivantes** :
 
 ```bash
@@ -117,7 +128,8 @@ La même que Biblio, sur le même serveur :
 
 Lecture libre ; toute écriture demande la session organisateur (cookie
 HttpOnly, SameSite=Strict, signé, 60 jours), contrôle de l'origine, essais de
-mot de passe limités à dix par quart d'heure.
+mot de passe limités à dix par quart d'heure. Changer le mot de passe ferme
+toutes les sessions (la clé des sessions en dépend).
 
 ## Organisation du dossier
 
@@ -130,15 +142,16 @@ web/sw.js     ouverture hors connexion
 tests/        contrôles des règles, dont la vraie feuille du 16 septembre ;
               amorce-controle.json, les joueurs inventés des contrôles
 amorce/       données du fichier de David (prénom + initiale) — hors dépôt
-deploiement/  DNS, installeur, déployeur, livraison, assemblage du dépôt
+deploiement/  DNS, installeur, déployeur, livraison, assemblage du dépôt,
+              retour au mot de passe de l’installation
 .github/      les contrôles de GitHub Actions
 ```
 
 ## Contrôles
 
 ```bash
-node --test tests/regles.test.mjs                  # règles : 19 contrôles
-node --test tests/securite.test.mjs                # session, jetons, origine
+node --test tests/regles.test.mjs                  # règles : 25 contrôles
+node --test tests/securite.test.mjs                # session, jetons, origine, mot de passe
 node --test tests/coquille.test.mjs                # fichiers gardés hors ligne
 BASE=https://ppl.y-factor.fr MOT_DE_PASSE=… node --test api/test-api.mjs
 ```

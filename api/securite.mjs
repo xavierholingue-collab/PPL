@@ -15,7 +15,7 @@
  * En https, le cookie porte le préfixe __Host- : le navigateur refuse alors
  * qu'un autre sous-domaine de y-factor.fr pose un cookie du même nom.
  */
-import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
+import { createHmac, createHash, timingSafeEqual, scrypt, randomBytes } from 'node:crypto';
 
 /** @param {boolean} securise */
 export const nomCookie = (securise) => (securise ? '__Host-ppl_session' : 'ppl_session');
@@ -96,6 +96,47 @@ export function motDePasseCorrect(saisi, attendu) {
   const a = createHash('sha256').update(tolerant ? sansMiseEnForme(saisi) : saisi, 'utf8').digest();
   const b = createHash('sha256').update(tolerant ? sansMiseEnForme(attendu) : attendu, 'utf8').digest();
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Le mot de passe CHOISI DANS L'APPLI n'est gardé que sous forme d'empreinte
+ * scrypt, avec un sel propre à chaque changement. Réglages de l'OWASP
+ * (Password Storage Cheat Sheet) : N = 2^15, r = 8, p = 3, soit 32 Mio et
+ * une fraction de seconde par essai, hors du fil principal.
+ * Forme gardée : scrypt$<log2 N>$<r>$<p>$<sel>$<empreinte>, en base64url.
+ */
+const SCRYPT = { ln: 15, r: 8, p: 3 };
+const MEMOIRE_MAX = 64 * 1024 * 1024;
+
+/** @param {string} mdp @param {Buffer} sel @param {number} longueur @param {{ ln: number, r: number, p: number }} reglages */
+function deriver(mdp, sel, longueur, { ln, r, p }) {
+  return /** @type {Promise<Buffer>} */ (new Promise((resolve, reject) => {
+    scrypt(mdp.normalize('NFC'), sel, longueur, { N: 2 ** ln, r, p, maxmem: MEMOIRE_MAX },
+      (e, cle) => (e ? reject(e) : resolve(cle)));
+  }));
+}
+
+/** @param {string} mdp */
+export async function empreinteMotDePasse(mdp) {
+  const sel = randomBytes(16);
+  const cle = await deriver(mdp, sel, 32, SCRYPT);
+  return `scrypt$${SCRYPT.ln}$${SCRYPT.r}$${SCRYPT.p}$${sel.toString('base64url')}$${cle.toString('base64url')}`;
+}
+
+/**
+ * Comparaison exacte (casse comprise) avec une empreinte de la forme
+ * ci-dessus. Une empreinte illisible ne laisse passer personne.
+ * @param {unknown} saisi @param {string} empreinte
+ */
+export async function empreinteCorrespond(saisi, empreinte) {
+  if (typeof saisi !== 'string' || saisi.length > 200) return false;
+  const m = /^scrypt\$(\d{1,2})\$(\d{1,2})\$(\d{1,2})\$([\w-]{16,})\$([\w-]{32,})$/.exec(empreinte);
+  if (!m) return false;
+  const [ln, r, p] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (ln < 10 || ln > 20 || r < 1 || r > 16 || p < 1 || p > 16) return false;
+  const attendue = Buffer.from(m[5], 'base64url');
+  const calculee = await deriver(saisi, Buffer.from(m[4], 'base64url'), attendue.length, { ln, r, p });
+  return timingSafeEqual(calculee, attendue);
 }
 
 /** @param {string | undefined} entete */

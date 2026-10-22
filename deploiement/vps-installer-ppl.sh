@@ -456,4 +456,6 @@ if [ "${nouveau_mdp}" -eq 1 ]; then
   echo "        ${ancien_mdp}"
   echo
   echo "   Pour le relire plus tard : sudo grep MOT_DE_PASSE ${ENVF}"
+  echo "   L'organisateur peut le changer dans l'appli (onglet Organisateur) ;"
+  echo "   en cas d'oubli, reinitialiser-mdp-ppl.sh ramène à celui-ci."
 fi

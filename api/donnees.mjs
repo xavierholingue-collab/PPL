@@ -161,6 +161,28 @@ export async function modifierJoueur(pool, id, modif) {
 }
 
 /**
+ * L'empreinte du mot de passe choisi dans l'appli, ou null (alors c'est
+ * celui de /etc/ppl/env qui vaut).
+ * @param {Pool} db
+ * @returns {Promise<string | null>}
+ */
+export async function lireEmpreinte(db) {
+  const { rows } = await db.query('select empreinte from organisateur where id = 1');
+  return rows[0]?.empreinte ?? null;
+}
+
+/** @param {Pool} pool @param {string} empreinte */
+export async function enregistrerEmpreinte(pool, empreinte) {
+  await enTransaction(pool, async (client) => {
+    await client.query(
+      `insert into organisateur (id, empreinte, modifie_le) values (1, $1, now())
+       on conflict (id) do update set empreinte = excluded.empreinte, modifie_le = now()`, [empreinte]);
+    // Ni l'ancien ni le nouveau : seulement le fait.
+    await client.query(`insert into journal (action, detail) values ('mot_de_passe_change', '{}'::jsonb)`);
+  });
+}
+
+/**
  * Fusionne deux fiches du même joueur (inscrit deux fois, sous deux noms) :
  * les points de `de` passent à `vers`, l'état des saisies est renuméroté,
  * puis la fiche `de` est supprimée. Tout ou rien.

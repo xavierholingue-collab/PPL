@@ -135,6 +135,7 @@ test('toute écriture est refusée sans session', async () => {
     ['POST', '/api/joueurs', { nom: 'Intrus' }],
     ['PATCH', '/api/joueurs/1', { nom: 'Intrus' }],
     ['POST', '/api/joueurs/1/fusion', { vers: 2 }],
+    ['POST', '/api/mot-de-passe', { actuel: 'x', nouveau: 'nouveau-mdp' }],
   ];
   for (const [methode, chemin, corps] of essais) {
     const r = await appel(/** @type {string} */ (chemin), { methode: /** @type {string} */ (methode), corps });
@@ -348,6 +349,36 @@ test('fusion de deux fiches du même joueur', { skip: !ECRITURES && 'ECRITURES=1
 
   for (const d of ['2027-07-21', '2027-07-14']) await appel(`/api/soirees/${d}/resultats`, { methode: 'DELETE', cookie: c });
   for (const id of [b, x, y]) await appel(`/api/joueurs/${id}`, { methode: 'PATCH', corps: { actif: false }, cookie: c });
+});
+
+test('changer le mot de passe : l’actuel exigé, les autres sessions fermées', { skip: !ECRITURES && 'ECRITURES=1 pour l’activer' }, async () => {
+  const ouvrir = async () => {
+    const r = await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: MOT_DE_PASSE } });
+    assert.equal(r.statut, 204);
+    return /** @type {string} */ (r.entetes.get('set-cookie')).split(';')[0];
+  };
+  const autre = await ouvrir(); // un autre téléphone déjà connecté
+  const c = await ouvrir();
+  const changer = (/** @type {string} */ actuel, /** @type {string} */ nouveau, /** @type {string} */ cookie) =>
+    appel('/api/mot-de-passe', { methode: 'POST', corps: { actuel, nouveau }, cookie });
+
+  assert.equal((await changer('pas-le-bon', 'Nouveau2026', c)).statut, 403);
+  assert.equal((await changer(MOT_DE_PASSE, 'court', c)).statut, 400);
+  assert.equal((await changer(MOT_DE_PASSE, MOT_DE_PASSE, c)).statut, 400, 'déjà le mot de passe actuel');
+
+  const r = await changer(MOT_DE_PASSE, 'Nouveau2026!', c);
+  assert.equal(r.statut, 204);
+  const neuf = /** @type {string} */ (r.entetes.get('set-cookie')).split(';')[0];
+  assert.equal((await appel('/api/session', { cookie: neuf })).json.organisateur, true, 'ce téléphone reste connecté');
+  assert.equal((await appel('/api/session', { cookie: autre })).json.organisateur, false, 'l’autre téléphone doit se reconnecter');
+  assert.equal((await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: MOT_DE_PASSE } })).statut, 401, 'l’ancien ne passe plus');
+  assert.equal((await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: 'nouveau2026!' } })).statut, 401, 'la casse compte');
+  assert.equal((await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: 'Nouveau2026!' } })).statut, 204);
+
+  // On remet celui des contrôles, pour les suivants.
+  assert.equal((await changer('Nouveau2026!', MOT_DE_PASSE, neuf)).statut, 204);
+  assert.equal((await appel('/api/connexion', { methode: 'POST', corps: { mot_de_passe: MOT_DE_PASSE } })).statut, 204);
+  cookie = ''; // la session gardée par connexion() est tombée avec le changement
 });
 
 test('dix essais ratés bloquent l’adresse', { skip: !ECRITURES && 'ECRITURES=1 pour l’activer' }, async () => {
