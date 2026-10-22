@@ -7,7 +7,7 @@ import {
   h, remplir, icone, dateLongue, dateTitre, moisCourt, aujourdhui, pluriel,
   ordinal, annoncer, boutonConfirme, rafraichir,
 } from '../ui.js';
-import { classerPoule, rencontresTableauFinal, tableauFinalPrevu } from '../regles.js';
+import { classerPoule, finaleDuTableau, rencontresDePoule, tableauFinalEnregistre, trouverMatch } from '../regles.js';
 
 const NOMS_FORMATS = /** @type {Record<string, string>} */ ({
   poules: 'en poules', classement: 'classement de la soirée', libre: 'points saisis directement',
@@ -177,12 +177,31 @@ function sectionPoules(e, nom) {
   /** @type {Node | null} */
   let tableau = null;
   const presents = Array.isArray(e.presents) ? e.presents.length : poules.flat().length;
-  if (poules.length === 2 && (e.tableauFinal ?? tableauFinalPrevu(2, presents))) {
+  if (poules.length === 2 && tableauFinalEnregistre(e.tableauFinal, presents)) {
     const ordres = poules.map((j) => classerPoule(j, matchs, e.departages ?? {}).lignes.map((l) => l.id));
-    const rencontres = rencontresTableauFinal(ordres[0], ordres[1]);
+    const finale = finaleDuTableau(ordres[0], ordres[1]);
+    const pf = finale.pouleFinale;
+    /** @type {Node | null} */
+    let pouleDeTrois = null;
+    if (pf) {
+      const mf = Array.isArray(e.finale?.matchs) ? e.finale.matchs : [];
+      const c = classerPoule(pf.joueurs, mf, e.finale?.departages ?? {});
+      pouleDeTrois = h('div', null,
+        h('h4', null, `Poule de trois, places ${pf.places[0]} à ${pf.places[2]}`),
+        h('ul', { class: 'liste-simple' },
+          rencontresDePoule(pf.joueurs).map((r) => {
+            const m = trouverMatch(mf, r.a, r.b);
+            const [sa, sb] = !m ? [null, null] : m.a === r.a ? [m.sa, m.sb] : [m.sb, m.sa];
+            return h('li', null, h('div', { class: 'rangee' },
+              h('span', null, `${nom(r.a)} contre ${nom(r.b)}`),
+              h('span', { class: 'chiffres' }, sa === null ? '' : `${sa}-${sb}`)));
+          })),
+        c.complete ? h('ul', { class: 'liste-simple' }, c.lignes.map((l, i) => h('li', null, h('div', { class: 'rangee' },
+          h('span', null, nom(l.id)), h('span', { class: 'chiffres' }, `place ${pf.places[i]}`))))) : null);
+    }
     tableau = h('div', { class: 'section' },
       h('h3', null, 'Tableau final'),
-      h('ul', { class: 'liste-simple' }, rencontres.map((rc) => {
+      h('ul', { class: 'liste-simple' }, finale.rencontres.map((rc) => {
         const v = e.vainqueurs?.[rc.niveau];
         const texte = rc.a !== null && rc.b !== null
           ? (v ? `${nom(v)} bat ${nom(v === rc.a ? rc.b : rc.a)}` : `${nom(rc.a)} contre ${nom(rc.b)}`)
@@ -190,7 +209,8 @@ function sectionPoules(e, nom) {
         return h('li', null, h('div', { class: 'rangee' },
           h('span', null, texte),
           h('span', { class: 'chiffres' }, rc.places.length === 2 ? `places ${rc.places[0]} et ${rc.places[1]}` : `place ${rc.places[0]}`)));
-      })));
+      })),
+      pouleDeTrois);
   }
 
   return h('section', { class: 'section', 'aria-labelledby': 'titre-poules' },

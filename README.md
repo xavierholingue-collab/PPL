@@ -72,10 +72,15 @@ tout envoi qui contiendrait un secret, l'amorce ou le nom d'un joueur du club.
 
 Trois façons de saisir une soirée :
 
-- **Poules** : on touche le score de chaque match (2-0, 2-1, 1-2, 0-2) ;
+- **Poules** : on touche le score de chaque match (2-0, 2-1, 1-2, 0-2), dans
+  l'ordre de la feuille (le 1er joueur contre chacun des suivants, puis le 2e…) ;
   l'appli classe les poules (points, victoires, match gagné sur l'autre,
-  tournante à trois), prépare le tableau final (1er de A contre 1er de B…) et
-  attribue les points. Au-delà de 17 joueurs, barème de la feuille (12, 11, 10…).
+  tournante à trois), puis prépare la phase finale et attribue les points.
+  Avec deux poules, le tableau final se joue quel que soit le nombre de
+  joueurs : 1er de A contre 1er de B pour les places 1 et 2, les 2es pour les
+  places 3 et 4, etc. Avec un nombre impair (une poule a un joueur de plus),
+  les trois derniers jouent une poule de trois, notée comme une poule. Un soir
+  sans tableau final, on décoche la case : barème de la feuille (12, 11, 10…).
 - **Classement de la soirée** : on touche les joueurs dans l'ordre d'arrivée ;
   les points suivent la place (N joueurs : N points au 1er, 1 au dernier).
 - **Points directs** : on tape les points de chacun, comme dans le fichier.
@@ -138,10 +143,7 @@ scripts et l'API complète, écritures comprises, sur une base de contrôle.
 
 ## Ce qui reste ouvert
 
-- Les réponses de David (barème au-delà de 17 joueurs, soirées spéciales,
+- Les réponses de David (phase finale à trois poules, soirées spéciales,
   autres formats) ; les points `À CONFIRMER` sont marqués dans `web/js/regles.js`.
-- Sauvegarde : la sauvegarde de nuit du VPS prend toutes les bases, donc
-  `ppl` aussi (rien à déclarer). À vérifier une fois dans le manifeste du
-  lendemain de l'installation.
 - Si la maquette devient l'outil du club : livraison automatique depuis
   GitHub, avec une recette avant la production, comme Biblio.

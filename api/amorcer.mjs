@@ -54,6 +54,15 @@ function renumeroter(etat, ids) {
       return [[...ordreN].sort((a, b) => a - b).join('-'), ordreN];
     }));
   }
+  if (etat.finale) {
+    copie.finale = {
+      matchs: (etat.finale.matchs ?? []).map((/** @type {any} */ m) => ({ ...m, a: n(m.a), b: n(m.b) })),
+      departages: Object.fromEntries(Object.entries(etat.finale.departages ?? {}).map(([, ordre]) => {
+        const ordreN = /** @type {number[]} */ (ordre).map(n);
+        return [[...ordreN].sort((a, b) => a - b).join('-'), ordreN];
+      })),
+    };
+  }
   const v = validerEtat(copie);
   if (!v.ok) throw new Error(`état invalide après renumérotation : ${v.erreur}`);
   return v.valeur;

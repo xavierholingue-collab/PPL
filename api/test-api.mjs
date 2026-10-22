@@ -211,6 +211,10 @@ test('les saisies mal formées sont refusées avant la base', async () => {
     ['/api/soirees/2026-10-21', { format: 'libre', resultats: 'tout' }, 400],
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 2 }, resultats: [] }, 400],
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', matchs: [{ a: 1, b: 1, sa: 2, sb: 0 }] }, resultats: [] }, 400],
+    // La poule de trois de la phase finale : trois matchs au plus, bien formés.
+    ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: 'trois' }, resultats: [] }, 400],
+    ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: { matchs: [{ a: 1, b: 2, sa: 3, sb: 0 }] } }, resultats: [] }, 400],
+    ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: { matchs: Array.from({ length: 4 }, (_, i) => ({ a: 1, b: i + 2, sa: 2, sb: 0 })) } }, resultats: [] }, 400],
     ['/api/soirees/2026-02-30', { format: 'libre', resultats: [] }, 400],
     ['/api/soirees/2031-01-07', { format: 'libre', resultats: [] }, 400],
   ];

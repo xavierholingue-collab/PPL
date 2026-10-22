@@ -102,6 +102,41 @@ function listeIds(v, max) {
 }
 
 /**
+ * Des matchs de poule : deux joueurs distincts, un score en sets de 0 à 2.
+ * @param {unknown} v @param {number} max
+ * @returns {{ a: number, b: number, sa: number, sb: number }[] | null}
+ */
+function lireMatchs(v, max) {
+  if (!Array.isArray(v) || v.length > max) return null;
+  /** @type {{ a: number, b: number, sa: number, sb: number }[]} */
+  const matchs = [];
+  for (const m of v) {
+    if (!objet(m) || !idValide(m.a) || !idValide(m.b) || m.a === m.b
+        || !entierEntre(m.sa, 0, 2) || !entierEntre(m.sb, 0, 2)) return null;
+    matchs.push({ a: /** @type {number} */ (m.a), b: /** @type {number} */ (m.b), sa: /** @type {number} */ (m.sa), sb: /** @type {number} */ (m.sb) });
+  }
+  return matchs;
+}
+
+/**
+ * Des départages : pour chaque groupe à égalité (clé « 3-7-12 »), l'ordre
+ * donné par la tournante.
+ * @param {unknown} v @param {number} max
+ * @returns {Record<string, number[]> | null}
+ */
+function lireDepartages(v, max) {
+  if (!objet(v) || Object.keys(v).length > max) return null;
+  /** @type {Record<string, number[]>} */
+  const departages = {};
+  for (const [cle, ordre] of Object.entries(v)) {
+    const ids = listeIds(ordre, MAX_JOUEURS_SOIREE);
+    if (!/^\d{1,10}(-\d{1,10}){1,98}$/.test(cle) || !ids) return null;
+    departages[cle] = ids;
+  }
+  return departages;
+}
+
+/**
  * L'état d'un assistant de saisie. On en garde la trace pour savoir d'où
  * viennent les points ; on ne recopie que les champs connus, bornés.
  * @param {unknown} etat
@@ -132,27 +167,24 @@ export function validerEtat(etat) {
   }
   if (etat.matchs !== undefined) {
     if (!Array.isArray(etat.matchs) || etat.matchs.length > 1500) return { ok: false, erreur: 'état : matchs invalides' };
-    /** @type {{ a: number, b: number, sa: number, sb: number }[]} */
-    const matchs = [];
-    for (const m of etat.matchs) {
-      if (!objet(m) || !idValide(m.a) || !idValide(m.b) || m.a === m.b
-          || !entierEntre(m.sa, 0, 2) || !entierEntre(m.sb, 0, 2)) {
-        return { ok: false, erreur: 'état : un match est mal formé' };
-      }
-      matchs.push({ a: /** @type {number} */ (m.a), b: /** @type {number} */ (m.b), sa: /** @type {number} */ (m.sa), sb: /** @type {number} */ (m.sb) });
-    }
+    const matchs = lireMatchs(etat.matchs, 1500);
+    if (!matchs) return { ok: false, erreur: 'état : un match est mal formé' };
     propre.matchs = matchs;
   }
   if (etat.departages !== undefined) {
     if (!objet(etat.departages) || Object.keys(etat.departages).length > 50) return { ok: false, erreur: 'état : départages invalides' };
-    /** @type {Record<string, number[]>} */
-    const departages = {};
-    for (const [cle, ordre] of Object.entries(etat.departages)) {
-      const ids = listeIds(ordre, MAX_JOUEURS_SOIREE);
-      if (!/^\d{1,10}(-\d{1,10}){1,98}$/.test(cle) || !ids) return { ok: false, erreur: 'état : départage mal formé' };
-      departages[cle] = ids;
-    }
+    const departages = lireDepartages(etat.departages, 50);
+    if (!departages) return { ok: false, erreur: 'état : départage mal formé' };
     propre.departages = departages;
+  }
+  // La poule de trois de la phase finale (nombre impair de joueurs) : ses
+  // matchs rejouent parfois une rencontre de poule, d'où un champ à part.
+  if (etat.finale !== undefined) {
+    if (!objet(etat.finale)) return { ok: false, erreur: 'état : phase finale invalide' };
+    const matchs = lireMatchs(etat.finale.matchs ?? [], 3);
+    const departages = lireDepartages(etat.finale.departages ?? {}, 1);
+    if (!matchs || !departages) return { ok: false, erreur: 'état : poule de trois mal formée' };
+    propre.finale = { matchs, departages };
   }
   if (etat.tableauFinal !== undefined) {
     if (typeof etat.tableauFinal !== 'boolean') return { ok: false, erreur: 'état : tableauFinal vrai ou faux' };

@@ -7,9 +7,12 @@
  *
  * D'où viennent ces règles
  *   • la feuille « Résultats du 16 septembre » de David (poules, égalités,
- *     tableau final, barème au-delà de 17 joueurs) ;
+ *     tableau final) ;
  *   • le fichier « PPL 2026 2027 Classement Annuel Championnat_V0.ods »
- *     (somme par semestre, rang partagé entre ex æquo).
+ *     (somme par semestre, rang partagé entre ex æquo) ;
+ *   • le courriel de David du 18/10/2026 : après les poules, les rencontres
+ *     de classement se jouent toujours (1ers entre eux, 2es entre eux…), et
+ *     à nombre impair les trois derniers jouent une poule de trois.
  *
  * Ce qui reste à confirmer avec David est signalé par « À CONFIRMER ».
  */
@@ -30,10 +33,12 @@
  * }} LignePoule
  */
 
-/** Au-delà de ce nombre de joueurs, le tableau final n'est pas disputé. */
-export const SEUIL_TABLEAU_FINAL = 17;
-
-/** Barème de la feuille quand le tableau final n'est pas joué : 1ers de poule 12 pts, 2es 11 pts… */
+/**
+ * Barème de la feuille quand la phase finale n'est pas jouée : 1ers de poule
+ * 12 pts, 2es 11 pts… La feuille le prévoyait au-delà de 17 joueurs ; David a
+ * précisé le 18/10/2026 que la phase finale se joue toujours. Le barème ne
+ * sert donc plus que si l'organisateur indique qu'elle n'a pas eu lieu.
+ */
 export const DEPART_BAREME_POULE = 12;
 
 /** Les quatre issues possibles d'un match en deux sets gagnants, vues du joueur de gauche. */
@@ -59,10 +64,9 @@ export function pointsSelonPlace(place, nbClasses) {
 }
 
 /**
- * Barème « plus de 17 joueurs » écrit sur la feuille : les premiers de chaque
- * poule prennent 12 points, les seconds 11, les troisièmes 10… sans descendre
- * sous 1 point.
- * À CONFIRMER : les soirées à 18 joueurs du fichier ont donné 1 à 18 points.
+ * Barème de la feuille, quand la phase finale n'a pas été jouée : les
+ * premiers de chaque poule prennent 12 points, les seconds 11, les
+ * troisièmes 10… sans descendre sous 1 point.
  * @param {number} rangDansLaPoule
  * @param {number} [depart]
  */
@@ -121,30 +125,16 @@ export function repartirEnSerpentin(ordre, nbPoules) {
 }
 
 /**
- * Toutes les rencontres d'une poule, rangées par tours (méthode du cercle) :
- * dans un même tour, personne ne joue deux fois. Avec un nombre impair de
- * joueurs, un joueur est exempt à chaque tour.
+ * Toutes les rencontres d'une poule, dans l'ordre de la feuille : le 1er
+ * joueur contre chacun des suivants, puis le 2e contre ceux qui le suivent,
+ * et ainsi de suite. Poule de 6 : 5 matchs pour le 1er, 1 seul pour
+ * l'avant-dernier (David, 22/10/2026 : c'est ainsi qu'il recopie sa feuille).
+ * Le joueur de la ligne est toujours à gauche (`a`).
  * @param {IdJoueur[]} joueurs
- * @returns {{ tour: number, a: IdJoueur, b: IdJoueur }[]}
+ * @returns {{ a: IdJoueur, b: IdJoueur }[]}
  */
 export function rencontresDePoule(joueurs) {
-  /** @type {(IdJoueur | null)[]} */
-  const cercle = [...joueurs];
-  if (cercle.length % 2 === 1) cercle.push(null);
-  const n = cercle.length;
-  /** @type {{ tour: number, a: IdJoueur, b: IdJoueur }[]} */
-  const liste = [];
-  for (let t = 0; t < n - 1; t++) {
-    for (let i = 0; i < n / 2; i++) {
-      const a = cercle[i];
-      const b = cercle[n - 1 - i];
-      if (a !== null && b !== null) liste.push({ tour: t + 1, a, b });
-    }
-    // Le premier reste en place, les autres tournent d'un cran.
-    const dernier = cercle.pop();
-    cercle.splice(1, 0, dernier === undefined ? null : dernier);
-  }
-  return liste;
+  return joueurs.flatMap((a, i) => joueurs.slice(i + 1).map((b) => ({ a, b })));
 }
 
 /** Clé d'une paire, indépendante de l'ordre. @param {IdJoueur} x @param {IdJoueur} y */
@@ -279,12 +269,30 @@ function memesElements(p, q) {
 // ---------------------------------------------------------------------------
 
 /**
- * Faut-il jouer le tableau final ? Seulement avec deux poules et au plus
- * 17 joueurs, comme le dit la feuille. L'organisateur peut passer outre.
- * @param {number} nbPoules @param {number} nbJoueurs
+ * Faut-il jouer le tableau final ? Avec deux poules, toujours, quel que soit
+ * le nombre de joueurs (David, 22/10/2026 ; les soirées à 18 joueurs du
+ * fichier ont d'ailleurs donné de 1 à 18 points). La feuille disait « pas au-
+ * delà de 17 » : ce n'est pas la pratique. L'organisateur peut passer outre.
+ * À CONFIRMER : avec trois poules, comment se joue la phase finale ?
+ * @param {number} nbPoules
  */
-export function tableauFinalPrevu(nbPoules, nbJoueurs) {
-  return nbPoules === 2 && nbJoueurs <= SEUIL_TABLEAU_FINAL;
+export function tableauFinalPrevu(nbPoules) {
+  return nbPoules === 2;
+}
+
+/** Le seuil de l'ancienne règle, pour relire les soirées enregistrées avant le 22/10/2026. */
+const ANCIEN_SEUIL_TABLEAU_FINAL = 17;
+
+/**
+ * Le tableau final a-t-il été joué, d'après l'état gardé avec une soirée à
+ * deux poules ? Depuis le 22/10/2026, le choix est toujours écrit. Avant,
+ * son absence voulait dire « selon la règle d'alors » : pas de tableau final
+ * au-delà de 17 joueurs. Sans cette lecture, une ancienne soirée à 18 joueurs
+ * afficherait un tableau final qui n'a jamais eu lieu.
+ * @param {unknown} choix @param {number} nbPresents
+ */
+export function tableauFinalEnregistre(choix, nbPresents) {
+  return typeof choix === 'boolean' ? choix : nbPresents <= ANCIEN_SEUIL_TABLEAU_FINAL;
 }
 
 /**
@@ -331,6 +339,63 @@ export function placesDepuisTableauFinal(rencontres, vainqueurs) {
       places.push({ id: seul, place: r.places[0] });
     }
   }
+  return places;
+}
+
+/**
+ * La phase finale après deux poules, telle que David la décrit (18/10/2026) :
+ * les 1ers des deux poules se rencontrent pour les places 1 et 2, les 2es
+ * pour les places 3 et 4, et ainsi de suite. Avec un nombre impair de joueurs
+ * (poules de n + 1 et de n), les trois derniers — les deux n-ièmes et le
+ * joueur seul à son niveau — jouent une poule de trois pour les trois
+ * dernières places.
+ *
+ * Si les poules diffèrent de plus d'un joueur (répartition retouchée à la
+ * main), il n'y a pas de poule de trois : les joueurs en trop prennent les
+ * places suivantes, dans l'ordre de leur poule.
+ * @param {IdJoueur[]} ordreA classement de la poule A
+ * @param {IdJoueur[]} ordreB classement de la poule B
+ * @returns {{
+ *   rencontres: ReturnType<typeof rencontresTableauFinal>,
+ *   pouleFinale: { joueurs: IdJoueur[], places: number[] } | null
+ * }}
+ */
+export function finaleDuTableau(ordreA, ordreB) {
+  const rencontres = rencontresTableauFinal(ordreA, ordreB);
+  if (Math.abs(ordreA.length - ordreB.length) !== 1 || Math.min(ordreA.length, ordreB.length) < 1) {
+    return { rencontres, pouleFinale: null };
+  }
+  // Les deux derniers niveaux : la dernière paire, puis le joueur seul.
+  const paire = rencontres[rencontres.length - 2];
+  const seul = rencontres[rencontres.length - 1];
+  return {
+    rencontres: rencontres.slice(0, -2),
+    pouleFinale: {
+      joueurs: [/** @type {IdJoueur} */ (paire.a), /** @type {IdJoueur} */ (paire.b), /** @type {IdJoueur} */ (seul.a ?? seul.b)],
+      places: [paire.places[0], paire.places[1], seul.places[0]],
+    },
+  };
+}
+
+/**
+ * Places de la soirée à partir de la phase finale : les vainqueurs des
+ * rencontres, puis le classement de la poule de trois s'il y en a une
+ * (mêmes règles qu'une poule : points, victoires, duel, tournante).
+ * Rend `null` tant qu'il manque un vainqueur, un match ou un départage.
+ * @param {ReturnType<typeof finaleDuTableau>} finale
+ * @param {Record<number, IdJoueur>} vainqueurs
+ * @param {Match[]} matchs matchs de la poule de trois
+ * @param {Record<string, IdJoueur[]>} [departages] départages de la poule de trois
+ * @returns {{ id: IdJoueur, place: number }[] | null}
+ */
+export function placesDepuisFinale(finale, vainqueurs, matchs, departages = {}) {
+  const places = placesDepuisTableauFinal(finale.rencontres, vainqueurs);
+  if (!places) return null;
+  if (!finale.pouleFinale) return places;
+  const c = classerPoule(finale.pouleFinale.joueurs, matchs, departages);
+  if (!c.complete) return null;
+  const pf = finale.pouleFinale;
+  c.lignes.forEach((l, i) => places.push({ id: l.id, place: pf.places[i] }));
   return places;
 }
 

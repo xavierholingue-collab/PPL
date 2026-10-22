@@ -27,6 +27,7 @@ import { lireBrouillon, ecrireBrouillon, effacerBrouillon } from '../brouillon.j
  *   nbPoules: number, methode: 'classement' | 'hasard', poules: number[][],
  *   matchs: R.Match[], departages: Record<string, number[]>,
  *   tableauFinal: boolean | null, vainqueurs: Record<string, number>,
+ *   finale: { matchs: R.Match[], departages: Record<string, number[]> },
  *   ordre: number[], points: Record<string, number>,
  *   ajustements: Record<string, number>, pouleOuverte: number,
  *   anciennesPoules: Record<string, number>
@@ -43,8 +44,8 @@ function brouillonVide(date) {
   return {
     version: 1, date, etape: 'presents', mode: null, presents: [], libelle: null, compte: true,
     nbPoules: 2, methode: 'classement', poules: [], matchs: [], departages: {},
-    tableauFinal: null, vainqueurs: {}, ordre: [], points: {}, ajustements: {}, pouleOuverte: 0,
-    anciennesPoules: {},
+    tableauFinal: null, vainqueurs: {}, finale: { matchs: [], departages: {} },
+    ordre: [], points: {}, ajustements: {}, pouleOuverte: 0, anciennesPoules: {},
   };
 }
 
@@ -63,7 +64,10 @@ function brouillonDepuisServeur(date, soiree) {
   if (e?.mode === 'poules' && Array.isArray(e.poules)) {
     Object.assign(b, {
       mode: 'poules', etape: 'matchs', poules: e.poules, nbPoules: e.poules.length,
-      matchs: e.matchs ?? [], departages: e.departages ?? {}, tableauFinal: e.tableauFinal ?? null, vainqueurs: e.vainqueurs ?? {},
+      matchs: e.matchs ?? [], departages: e.departages ?? {}, vainqueurs: e.vainqueurs ?? {},
+      // null : comme la règle (tableau final joué) ; false : pas joué ce soir-là.
+      tableauFinal: R.tableauFinalEnregistre(e.tableauFinal, b.presents.length) ? null : false,
+      finale: { matchs: e.finale?.matchs ?? [], departages: e.finale?.departages ?? {} },
     });
   } else if (e?.mode === 'classement' && Array.isArray(e.ordre)) {
     Object.assign(b, { mode: 'classement', etape: 'ordre', ordre: e.ordre });
@@ -98,7 +102,13 @@ function classementsDePoules(b) {
 /** Le tableau final se joue-t-il ? Le choix de l'organisateur prime sur la règle. @param {Brouillon} b */
 function tableauJoue(b) {
   if (b.poules.length !== 2) return false;
-  return b.tableauFinal ?? R.tableauFinalPrevu(2, b.presents.length);
+  return b.tableauFinal ?? R.tableauFinalPrevu(2);
+}
+
+/** La phase finale, d'après le classement des deux poules. @param {Brouillon} b */
+function finaleDe(b) {
+  const cls = classementsDePoules(b);
+  return R.finaleDuTableau(cls[0].lignes.map((l) => l.id), cls[1].lignes.map((l) => l.id));
 }
 
 /**
@@ -124,8 +134,8 @@ function resultatsCalcules(b) {
         .map((p) => ({ joueur_id: p.id, points: p.points, place: p.place }));
     }
     if (tableauJoue(b)) {
-      const rencontres = R.rencontresTableauFinal(cls[0].lignes.map((l) => l.id), cls[1].lignes.map((l) => l.id));
-      const places = R.placesDepuisTableauFinal(rencontres, /** @type {Record<number, number>} */ (/** @type {unknown} */ (b.vainqueurs)));
+      const places = R.placesDepuisFinale(finaleDe(b),
+        /** @type {Record<number, number>} */ (/** @type {unknown} */ (b.vainqueurs)), b.finale.matchs, b.finale.departages);
       if (!places) return null;
       return R.pointsDepuisPlaces(places).map((p) => ({ joueur_id: p.id, points: p.points, place: p.place }));
     }
@@ -157,9 +167,10 @@ function etatPourServeur(b) {
     return {
       version: 1, mode: 'poules', presents: b.presents, poules: b.poules, matchs,
       departages: b.departages, vainqueurs: b.vainqueurs, ajustements,
-      // Seul un choix contraire à la règle est gardé : rouvrir la soirée
-      // avec un autre nombre de joueurs fait de nouveau jouer la règle.
-      ...(b.tableauFinal === null ? {} : { tableauFinal: b.tableauFinal }),
+      ...(b.finale.matchs.length > 0 ? { finale: { matchs: b.finale.matchs, departages: b.finale.departages } } : {}),
+      // Toujours écrit : la règle a changé une fois (22/10/2026), une soirée
+      // enregistrée doit se relire de la même façon quoi qu'il arrive ensuite.
+      ...(b.poules.length === 2 ? { tableauFinal: tableauJoue(b) } : {}),
     };
   }
   if (b.mode === 'classement') return { version: 1, mode: 'classement', presents: b.presents, ordre: b.ordre, ajustements };
@@ -222,6 +233,9 @@ export async function ecranSaisie(vue, [date]) {
     b.compte = auCalendrier ? auCalendrier.compte : true;
   }
 
+  // Un brouillon gardé avant la poule de trois (octobre 2026) n'en a pas.
+  b.finale = { matchs: b.finale?.matchs ?? [], departages: b.finale?.departages ?? {} };
+
   const nomDe = new Map(joueurs.map((j) => [j.id, j.nom]));
   /** @param {number} id */
   const nom = (id) => nomDe.get(id) ?? `joueur ${id}`;
@@ -233,6 +247,15 @@ export async function ecranSaisie(vue, [date]) {
 
   function sauver() {
     ecrireBrouillon(b);
+  }
+
+  /**
+   * Les vainqueurs du tableau final et la poule de trois dépendent du
+   * classement des poules : tout ce qui le change les rend caducs.
+   */
+  function oublierFinale() {
+    b.vainqueurs = {};
+    b.finale = { matchs: [], departages: {} };
   }
 
   /** @param {Etape} etape */
@@ -398,7 +421,7 @@ export async function ecranSaisie(vue, [date]) {
     b.poules = b.poules.map((p) => p.filter((x) => x !== id));
     b.ordre = b.ordre.filter((x) => x !== id);
     for (const k of Object.keys(b.departages)) if (k.split('-').map(Number).includes(id)) delete b.departages[k];
-    b.vainqueurs = {};
+    oublierFinale();
   }
 
   // ---------------------------------------------------------- 2. format
@@ -454,7 +477,7 @@ export async function ecranSaisie(vue, [date]) {
     b.poules = R.repartirEnSerpentin(ordre, b.nbPoules);
     b.matchs = [];
     b.departages = {};
-    b.vainqueurs = {};
+    oublierFinale();
     b.pouleOuverte = 0;
   }
 
@@ -474,7 +497,7 @@ export async function ecranSaisie(vue, [date]) {
       delete b.anciennesPoules[String(id)];
     }
     if (manquants.length > 0) {
-      b.vainqueurs = {};
+      oublierFinale();
       sauver();
       annoncer(`${manquants.map(nom).join(', ')} ${manquants.length > 1 ? 'rejoignent' : 'rejoint'} la poule la moins remplie.`);
     }
@@ -532,7 +555,7 @@ export async function ecranSaisie(vue, [date]) {
               b.poules[(i + 1) % b.poules.length].push(id);
               b.matchs = b.matchs.filter((m) => m.a !== id && m.b !== id);
               for (const k of Object.keys(b.departages)) if (k.split('-').map(Number).includes(id)) delete b.departages[k];
-              b.vainqueurs = {};
+              oublierFinale();
               sauver();
               dessinerPoules();
             });
@@ -540,9 +563,9 @@ export async function ecranSaisie(vue, [date]) {
         }, h('span', null, nom(id)), b.poules.length > 1 ? h('span', { 'aria-hidden': 'true' }, '⇄') : null)))))));
       const n = b.presents.length;
       info.textContent = b.poules.length === 2
-        ? (R.tableauFinalPrevu(2, n)
-          ? `Avec ${n} joueurs, le tableau final se jouera : 1er de A contre 1er de B, et ainsi de suite.`
-          : `Plus de ${R.SEUIL_TABLEAU_FINAL} joueurs : d’après la feuille, pas de tableau final (vous pourrez le jouer quand même).`)
+        ? (Math.abs(b.poules[0].length - b.poules[1].length) !== 1
+          ? 'Après les poules, le tableau final : 1er de A contre 1er de B, 2e contre 2e, et ainsi de suite.'
+          : 'Après les poules, le tableau final : 1er de A contre 1er de B, et ainsi de suite ; les trois derniers jouent une poule de trois.')
         : b.poules.length === 1
           ? 'Une seule poule : son classement donne directement les places de la soirée.'
           : `Avec ${b.poules.length} poules, les points suivent le rang dans la poule : 12 pts aux premiers, 11 aux deuxièmes…`;
@@ -596,6 +619,96 @@ export async function ecranSaisie(vue, [date]) {
     ];
   }
 
+  // ---------------------------------------------------------- cartes communes
+  // Une poule de la soirée et la poule de trois de la phase finale se notent
+  // de la même façon : mêmes cartes, seul l'endroit où l'on écrit change.
+
+  /** @typedef {{ matchs: R.Match[], departages: Record<string, number[]> }} Cible */
+
+  /**
+   * Égalité que les victoires et le duel ne tranchent pas : la tournante
+   * en 5 points se joue à la table, l'organisateur en donne l'ordre.
+   * @param {{ cle: string, joueurs: number[] }} g
+   * @param {string} ou « dans la poule A », « dans la poule de trois »
+   * @param {() => Cible} cible
+   * @param {() => void} apres appelé une fois l'ordre noté et sauvé
+   */
+  function carteDepartage(g, ou, cible, apres) {
+    /** @type {number[]} */
+    const ordre = [];
+    const liste = h('ol', null);
+    const boutons = h('div', { class: 'actions' });
+    const remplirCarte = () => {
+      remplir(liste, ordre.map((id) => h('li', null, nom(id))));
+      remplir(boutons, g.joueurs.filter((id) => !ordre.includes(id)).map((id) => h('button', {
+        type: 'button', class: 'bouton-second',
+        onclick: () => {
+          ordre.push(id);
+          if (ordre.length === g.joueurs.length - 1) ordre.push(/** @type {number} */ (g.joueurs.find((x) => !ordre.includes(x))));
+          if (ordre.length === g.joueurs.length) {
+            cible().departages[g.cle] = [...ordre];
+            sauver();
+            apres();
+          } else remplirCarte();
+        },
+      }, nom(id))));
+    };
+    remplirCarte();
+    return h('div', { class: 'depart', role: 'group', 'aria-label': 'Égalité à départager' },
+      h('h3', null, 'Égalité à départager'),
+      h('p', null, `${g.joueurs.map(nom).join(', ')} : mêmes points et mêmes victoires ${ou}. `,
+        'Jouez la tournante en 5 points, puis touchez-les dans l’ordre, du premier au dernier.'),
+      liste,
+      boutons);
+  }
+
+  /**
+   * Un match en deux sets gagnants : on touche le score du joueur de gauche.
+   * @param {{ a: number, b: number }} r
+   * @param {() => Cible} cible
+   * @param {() => void} apres appelé après chaque appui, une fois sauvé
+   * @param {() => void} [rendCaduc] ce qu'un résultat changé efface en plus des départages
+   */
+  function carteMatch(r, cible, apres, rendCaduc) {
+    const noms = h('div', { class: 'match-noms' });
+    const issues = h('div', { class: 'issues', role: 'group', 'aria-label': `${nom(r.a)} contre ${nom(r.b)}` });
+    const carte = h('li', { class: 'match' }, noms, issues);
+    const dessinerCarte = () => {
+      const c = cible();
+      const m = R.trouverMatch(c.matchs, r.a, r.b);
+      // L'issue est toujours lue du point de vue du joueur de gauche (r.a).
+      const sa = m ? (m.a === r.a ? m.sa : m.sb) : null;
+      const sb = m ? (m.a === r.a ? m.sb : m.sa) : null;
+      carte.classList.toggle('joue', Boolean(m));
+      remplir(noms,
+        h('span', { class: m && sa !== null && sb !== null && sa > sb ? 'gagnant' : '' }, nom(r.a)),
+        h('i', null, 'contre'),
+        h('span', { class: m && sa !== null && sb !== null && sb > sa ? 'gagnant' : '' }, nom(r.b)));
+      remplir(issues, R.ISSUES.map(([x, y]) => h('button', {
+        type: 'button', class: 'issue', 'aria-pressed': String(sa === x && sb === y),
+        'aria-label': `${nom(r.a)} ${x}, ${nom(r.b)} ${y}`,
+        onclick: () => {
+          const cc = cible();
+          // Retoucher le score déjà choisi l'efface (erreur de doigt).
+          cc.matchs = cc.matchs.filter((mm) => R.clePaire(mm.a, mm.b) !== R.clePaire(r.a, r.b));
+          if (!(sa === x && sb === y)) cc.matchs.push({ a: r.a, b: r.b, sa: x, sb: y });
+          // Un résultat qui change peut défaire une égalité déjà tranchée,
+          // ou en créer une : les départages qui touchent ces joueurs sont revus.
+          for (const k of Object.keys(cc.departages)) {
+            const ids = k.split('-').map(Number);
+            if (ids.includes(r.a) || ids.includes(r.b)) delete cc.departages[k];
+          }
+          rendCaduc?.();
+          sauver();
+          dessinerCarte();
+          apres();
+        },
+      }, `${x}-${y}`)));
+    };
+    dessinerCarte();
+    return carte;
+  }
+
   // ---------------------------------------------------------- 3b. poules : matchs
 
   function etapeMatchs() {
@@ -637,104 +750,30 @@ export async function ecranSaisie(vue, [date]) {
             h('td', { class: 'nombre' }, l.points), h('td', { class: 'nombre' }, l.victoires), h('td', { class: 'nombre' }, l.joues))))),
       ];
       if (c.terminee) {
-        for (const g of c.aDepartager) blocs.push(carteDepartage(g, i));
+        for (const g of c.aDepartager) blocs.push(carteDepartage(g, `dans la poule ${LETTRES[i]}`, () => b, majClassement));
       }
       remplir(zoneClassement, ...blocs);
       majProgression();
     };
 
-    /**
-     * Égalité que les victoires et le duel ne tranchent pas : la tournante
-     * en 5 points se joue à la table, l'organisateur en donne l'ordre.
-     * @param {{ cle: string, joueurs: number[] }} g @param {number} poule
-     */
-    const carteDepartage = (g, poule) => {
-      /** @type {number[]} */
-      const ordre = [];
-      const liste = h('ol', null);
-      const boutons = h('div', { class: 'actions' });
-      const remplirCarte = () => {
-        remplir(liste, ordre.map((id) => h('li', null, nom(id))));
-        remplir(boutons, g.joueurs.filter((id) => !ordre.includes(id)).map((id) => h('button', {
-          type: 'button', class: 'bouton-second',
-          onclick: () => {
-            ordre.push(id);
-            if (ordre.length === g.joueurs.length - 1) ordre.push(/** @type {number} */ (g.joueurs.find((x) => !ordre.includes(x))));
-            if (ordre.length === g.joueurs.length) {
-              b.departages[g.cle] = [...ordre];
-              sauver();
-              majClassement();
-            } else remplirCarte();
-          },
-        }, nom(id))));
-      };
-      remplirCarte();
-      return h('div', { class: 'depart', role: 'group', 'aria-label': 'Égalité à départager' },
-        h('h3', null, 'Égalité à départager'),
-        h('p', null, `${g.joueurs.map(nom).join(', ')} : mêmes points et mêmes victoires dans la poule ${LETTRES[poule]}. `,
-          'Jouez la tournante en 5 points, puis touchez-les dans l’ordre, du premier au dernier.'),
-        liste,
-        boutons);
-    };
-
-    /** @param {{ tour: number, a: number, b: number }} r */
-    const carteMatch = (r) => {
-      const noms = h('div', { class: 'match-noms' });
-      const issues = h('div', { class: 'issues', role: 'group', 'aria-label': `${nom(r.a)} contre ${nom(r.b)}` });
-      const carte = h('li', { class: 'match' }, noms, issues);
-      const dessinerCarte = () => {
-        const m = R.trouverMatch(b.matchs, r.a, r.b);
-        // L'issue est toujours lue du point de vue du joueur de gauche (r.a).
-        const sa = m ? (m.a === r.a ? m.sa : m.sb) : null;
-        const sb = m ? (m.a === r.a ? m.sb : m.sa) : null;
-        carte.classList.toggle('joue', Boolean(m));
-        remplir(noms,
-          h('span', { class: m && sa !== null && sb !== null && sa > sb ? 'gagnant' : '' }, nom(r.a)),
-          h('i', null, 'contre'),
-          h('span', { class: m && sa !== null && sb !== null && sb > sa ? 'gagnant' : '' }, nom(r.b)));
-        remplir(issues, R.ISSUES.map(([x, y]) => h('button', {
-          type: 'button', class: 'issue', 'aria-pressed': String(sa === x && sb === y),
-          'aria-label': `${nom(r.a)} ${x}, ${nom(r.b)} ${y}`,
-          onclick: () => {
-            const avant = b.matchs.length;
-            b.matchs = b.matchs.filter((mm) => R.clePaire(mm.a, mm.b) !== R.clePaire(r.a, r.b));
-            const memeChoix = sa === x && sb === y;
-            if (!memeChoix) b.matchs.push({ a: r.a, b: r.b, sa: x, sb: y });
-            // Un résultat qui change peut défaire une égalité déjà tranchée,
-            // ou en créer une : les départages de cette poule sont revus.
-            if (avant !== b.matchs.length || !memeChoix) {
-              for (const k of Object.keys(b.departages)) {
-                const ids = k.split('-').map(Number);
-                if (ids.includes(r.a) || ids.includes(r.b)) delete b.departages[k];
-              }
-              b.vainqueurs = {};
-            }
-            sauver();
-            dessinerCarte();
-            majClassement();
-          },
-        }, `${x}-${y}`)));
-      };
-      dessinerCarte();
-      return carte;
-    };
-
     const dessinerPoule = () => {
       const i = b.pouleOuverte;
       const rencontres = R.rencontresDePoule(b.poules[i]);
+      // Comme sur la feuille : le 1er joueur et ses matchs, puis le 2e…
       /** @type {Node[]} */
       const elements = [];
-      let tour = 0;
+      let ligne = -1;
       /** @type {HTMLElement | null} */
       let liste = null;
       for (const r of rencontres) {
-        if (r.tour !== tour) {
-          tour = r.tour;
-          elements.push(h('h3', { class: 'tour-titre' }, `Tour ${tour}`));
+        if (r.a !== ligne) {
+          ligne = r.a;
+          const reste = rencontres.filter((x) => x.a === r.a).length;
+          elements.push(h('h3', { class: 'tour-titre' }, nom(r.a), h('small', null, ` : ${pluriel(reste, 'match')}`)));
           liste = h('ol', { class: 'matchs' });
           elements.push(liste);
         }
-        /** @type {HTMLElement} */ (liste).appendChild(carteMatch(r));
+        /** @type {HTMLElement} */ (liste).appendChild(carteMatch(r, () => b, majClassement, oublierFinale));
       }
       remplir(zoneMatchs, ...elements);
       majClassement();
@@ -757,7 +796,7 @@ export async function ecranSaisie(vue, [date]) {
     dessinerPoule();
     return [
       h('h1', null, 'Les matchs'),
-      h('p', { class: 'aide' }, 'Deux sets gagnants de 11 points. Touchez le score du joueur de gauche : 2-1, c’est lui qui gagne en trois sets.'),
+      h('p', { class: 'aide' }, 'Dans l’ordre de la feuille : le 1er joueur contre chacun des suivants, puis le 2e, et ainsi de suite. Deux sets gagnants de 11 points. Touchez le score du joueur de gauche : 2-1, c’est lui qui gagne en trois sets.'),
       onglets,
       progression,
       zoneMatchs,
@@ -773,37 +812,38 @@ export async function ecranSaisie(vue, [date]) {
   function etapeTableau() {
     const cls = classementsDePoules(b);
     if (b.poules.length !== 2 || cls.some((c) => !c.complete)) { b.etape = 'matchs'; return etapeMatchs(); }
-    const n = b.presents.length;
-    const prevu = R.tableauFinalPrevu(2, n);
     const joue = tableauJoue(b);
     const voirPoints = /** @type {HTMLButtonElement} */ (h('button', { type: 'button', class: 'bouton', onclick: () => aller('verification') }, 'Voir les points'));
 
     /** @type {Node[]} */
     const contenu = [h('h1', null, 'Tableau final')];
-    // La case est TOUJOURS proposée : la règle donne la valeur par défaut,
-    // l'organisateur dit ce qui s'est réellement passé. On ne garde son
-    // choix que s'il contredit la règle.
+    // La case dit ce qui s'est réellement passé : le tableau final se joue
+    // toujours avec deux poules, mais un soir où l'on s'arrête après les
+    // poules, les points suivent le rang dans la poule.
     contenu.push(h('div', { class: 'carte' },
-      h('p', null, prevu
-        ? `${n} joueurs : d’après la feuille, le tableau final se joue.`
-        : `${n} joueurs : d’après la feuille, au-delà de ${R.SEUIL_TABLEAU_FINAL} joueurs le tableau final n’est pas disputé. Les points suivent alors le rang dans la poule : 12 pts aux premiers, 11 aux deuxièmes…`),
       h('label', { class: 'interrupteur' },
         h('input', {
           type: 'checkbox', checked: joue,
           onchange: (/** @type {Event} */ ev) => {
             const voulu = /** @type {HTMLInputElement} */ (ev.target).checked;
-            b.tableauFinal = voulu === prevu ? null : voulu;
-            b.vainqueurs = {};
+            b.tableauFinal = voulu === R.tableauFinalPrevu(2) ? null : voulu;
+            oublierFinale();
             sauver();
             dessiner();
           },
         }),
-        'Le tableau final a été joué ce soir')));
+        'Le tableau final a été joué ce soir'),
+      joue ? null : h('p', { class: 'aide' }, 'Sans tableau final, les points suivent le rang dans la poule : 12 pts aux premiers, 11 aux deuxièmes…')));
     if (joue) {
-      const rencontres = R.rencontresTableauFinal(cls[0].lignes.map((l) => l.id), cls[1].lignes.map((l) => l.id));
-      const verifier = () => { voirPoints.disabled = rencontres.some((r) => r.a !== null && r.b !== null && !b.vainqueurs[String(r.niveau)]); };
+      const finale = finaleDe(b);
+      const pf = finale.pouleFinale;
+      const zonePoule = h('div', { class: 'section' });
+      const verifier = () => {
+        voirPoints.disabled = R.placesDepuisFinale(finale,
+          /** @type {Record<number, number>} */ (/** @type {unknown} */ (b.vainqueurs)), b.finale.matchs, b.finale.departages) === null;
+      };
       contenu.push(h('p', { class: 'aide' }, '1er de A contre 1er de B pour les places 1 et 2, et ainsi de suite. En trois sets gagnants. Touchez le vainqueur.'));
-      contenu.push(h('ol', { class: 'rencontres' }, rencontres.map((r) => {
+      contenu.push(h('ol', { class: 'rencontres' }, finale.rencontres.map((r) => {
         if (r.a === null || r.b === null) {
           const seul = /** @type {number} */ (r.a ?? r.b);
           return h('li', { class: 'rencontre' },
@@ -823,6 +863,44 @@ export async function ecranSaisie(vue, [date]) {
         dessinerChoix();
         return h('li', { class: 'rencontre' }, h('span', { class: 'rencontre-titre' }, `Places ${r.places[0]} et ${r.places[1]}`), choix);
       })));
+
+      if (pf) {
+        // Nombre impair : les trois derniers jouent une poule de trois
+        // (David, 22/10/2026), notée comme une poule de la soirée.
+        const dessinerPouleFinale = () => {
+          /** @type {Node[]} */
+          const blocs = [
+            h('h2', null, `Poule de trois, places ${pf.places[0]} à ${pf.places[2]}`),
+            h('p', { class: 'aide' }, 'Les trois derniers jouent chacun contre chacun, en deux sets gagnants de 11.'),
+            h('ol', { class: 'matchs' }, R.rencontresDePoule(pf.joueurs).map((r) => carteMatch(r, () => b.finale, dessinerClassement))),
+            h('div', { class: 'section' }),
+          ];
+          remplir(zonePoule, ...blocs);
+          dessinerClassement();
+        };
+        const dessinerClassement = () => {
+          const c = R.classerPoule(pf.joueurs, b.finale.matchs, b.finale.departages);
+          const zone = /** @type {HTMLElement} */ (zonePoule.lastElementChild);
+          /** @type {Node[]} */
+          const blocs = [];
+          if (c.matchsJoues > 0) {
+            blocs.push(h('table', { class: 'tableau' },
+              h('caption', { class: 'sr' }, 'Classement de la poule de trois'),
+              h('thead', null, h('tr', null,
+                h('th', { class: 'rang', scope: 'col' }, 'Place'), h('th', { scope: 'col' }, 'Joueur'),
+                h('th', { class: 'nombre', scope: 'col' }, 'Pts'), h('th', { class: 'nombre', scope: 'col' }, 'V'), h('th', { class: 'nombre', scope: 'col' }, 'J'))),
+              h('tbody', null, c.lignes.map((l, i) => h('tr', null,
+                h('td', { class: 'rang' }, c.complete ? pf.places[i] : (l.exAequo ? `${l.rang}=` : l.rang)),
+                h('td', null, nom(l.id)),
+                h('td', { class: 'nombre' }, l.points), h('td', { class: 'nombre' }, l.victoires), h('td', { class: 'nombre' }, l.joues))))));
+          }
+          if (c.terminee) for (const g of c.aDepartager) blocs.push(carteDepartage(g, 'dans la poule de trois', () => b.finale, dessinerClassement));
+          remplir(zone, ...blocs);
+          verifier();
+        };
+        dessinerPouleFinale();
+        contenu.push(zonePoule);
+      }
       verifier();
     }
     contenu.push(h('div', { class: 'barre-action' },

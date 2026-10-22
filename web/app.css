@@ -20,7 +20,7 @@ body {
   padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
-h1, h2, h3 {
+h1, h2, h3, h4 {
   font-family: var(--police-chiffres);
   font-weight: 700;
   line-height: 1.1;
@@ -30,6 +30,7 @@ h1, h2, h3 {
 h1 { font-size: var(--t-5); }
 h2 { font-size: var(--t-3); }
 h3 { font-size: var(--t-2); }
+h4 { font-size: var(--t-1); margin-top: 1rem; }
 
 p { margin: 0; }
 a { color: var(--accent-texte); text-decoration-thickness: 1px; text-underline-offset: 3px; }
@@ -609,7 +610,8 @@ input[type="number"] { text-align: center; font-family: var(--police-chiffres); 
 .progression-barre span { display: block; height: 100%; background: var(--table); width: var(--avance, 0%); transition: width 200ms ease; }
 
 .matchs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--e-2); }
-.tour-titre { font-size: 0.8rem; color: var(--encre-douce); margin-top: var(--e-2); }
+.tour-titre { font-size: var(--t-1); color: var(--encre); margin-top: var(--e-3); }
+.tour-titre small { font-family: inherit; font-weight: 400; color: var(--encre-douce); }
 .match {
   background: var(--papier);
   border: 1px solid var(--trait);

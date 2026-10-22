@@ -17,6 +17,9 @@ const PREFIXE = 'ppl.saisie.';
 const ids = (t) => t === undefined || (Array.isArray(t) && t.every((x) => Number.isInteger(x) && x > 0));
 /** @param {unknown} o */
 const dico = (o) => o === undefined || (typeof o === 'object' && o !== null && !Array.isArray(o));
+/** @param {unknown} t */
+const matchs = (t) => t === undefined || (Array.isArray(t) && t.every((/** @type {any} */ m) =>
+  m && [m.a, m.b, m.sa, m.sb].every(Number.isInteger)));
 
 /**
  * Un brouillon d'une forme inattendue (version ancienne, stockage abîmé)
@@ -28,8 +31,8 @@ function formeValide(b, date) {
   return Boolean(b) && b.version === 1 && b.date === date
     && ids(b.presents) && ids(b.ordre)
     && (b.poules === undefined || (Array.isArray(b.poules) && b.poules.every(ids)))
-    && (b.matchs === undefined || (Array.isArray(b.matchs) && b.matchs.every((/** @type {any} */ m) =>
-      m && [m.a, m.b, m.sa, m.sb].every(Number.isInteger))))
+    && matchs(b.matchs)
+    && (b.finale === undefined || (dico(b.finale) && matchs(b.finale.matchs) && dico(b.finale.departages)))
     && dico(b.points) && dico(b.ajustements) && dico(b.departages) && dico(b.vainqueurs) && dico(b.anciennesPoules);
 }
 

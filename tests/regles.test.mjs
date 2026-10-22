@@ -16,6 +16,7 @@ import {
   repartirEnSerpentin, rencontresDePoule, classerPoule, cleGroupe,
   rencontresTableauFinal, placesDepuisTableauFinal, pointsDepuisPlaces,
   pointsSansTableauFinal, tableauFinalPrevu, nbPoulesConseille, rangsSportifs,
+  finaleDuTableau, placesDepuisFinale, tableauFinalEnregistre,
 } from '../web/js/regles.js';
 import {
   POULE_A, POULE_B, GRILLE_A, GRILLE_B, TOTAUX_A, TOTAUX_B,
@@ -58,7 +59,7 @@ test('16/09 — classement de la poule B, deux duels', () => {
 test('16/09 — tableau final et points : exactement la colonne du fichier', () => {
   const a = classerPoule(POULE_A, matchsDepuisGrille(POULE_A, GRILLE_A)).lignes.map((l) => l.id);
   const b = classerPoule(POULE_B, matchsDepuisGrille(POULE_B, GRILLE_B)).lignes.map((l) => l.id);
-  assert.equal(tableauFinalPrevu(2, 14), true);
+  assert.equal(tableauFinalPrevu(2), true);
   const rencontres = rencontresTableauFinal(a, b);
   assert.equal(rencontres.length, 7);
   const places = placesDepuisTableauFinal(rencontres, VAINQUEURS_TABLEAU);
@@ -101,20 +102,20 @@ test('serpentin : A B B A A B…', () => {
   assert.deepEqual(repartirEnSerpentin([1, 2, 3, 4, 5, 6], 3), [[1, 6], [2, 5], [3, 4]]);
 });
 
-test('rencontres : chacun joue une fois chaque adversaire, jamais deux fois par tour', () => {
+test('rencontres : chacun joue une fois chaque adversaire, dans l’ordre de la feuille', () => {
   for (const n of [2, 3, 6, 7, 11]) {
-    const joueurs = Array.from({ length: n }, (_, i) => i + 1);
+    const joueurs = Array.from({ length: n }, (_, i) => 10 * (n - i)); // ordre de la feuille, pas des identifiants
     const liste = rencontresDePoule(joueurs);
     assert.equal(liste.length, (n * (n - 1)) / 2, `${n} joueurs`);
     const paires = new Set(liste.map((m) => [m.a, m.b].sort((p, q) => p - q).join('-')));
     assert.equal(paires.size, liste.length, 'pas de doublon');
-    const parTour = new Map();
-    for (const m of liste) {
-      const s = parTour.get(m.tour) ?? new Set();
-      assert.ok(!s.has(m.a) && !s.has(m.b), `tour ${m.tour}`);
-      s.add(m.a); s.add(m.b); parTour.set(m.tour, s);
-    }
+    // Le joueur de la ligne est à gauche, et passe avant tous ses adversaires dans la feuille.
+    for (const m of liste) assert.ok(joueurs.indexOf(m.a) < joueurs.indexOf(m.b));
   }
+  // Poule de 6 : 5 matchs pour le 1er, 4 pour le 2e… 1 pour l'avant-dernier.
+  const six = rencontresDePoule([1, 2, 3, 4, 5, 6]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((j) => six.filter((m) => m.a === j).length), [5, 4, 3, 2, 1]);
+  assert.deepEqual(six.slice(0, 6).map((m) => `${m.a}-${m.b}`), ['1-2', '1-3', '1-4', '1-5', '1-6', '2-3']);
 });
 
 test('égalité à trois : tournante demandée, puis appliquée', () => {
@@ -185,9 +186,13 @@ test('tableau final incomplet : pas de places', () => {
   assert.equal(placesDepuisTableauFinal(r, { 1: 1, 2: 99 }), null);
 });
 
-test('plus de 17 joueurs : pas de tableau final, barème par rang de poule', () => {
-  assert.equal(tableauFinalPrevu(2, 18), false);
-  assert.equal(tableauFinalPrevu(3, 12), false);
+test('tableau final : toujours avec deux poules (David, 18/10/2026), jamais sinon', () => {
+  assert.equal(tableauFinalPrevu(2), true);
+  assert.equal(tableauFinalPrevu(1), false);
+  assert.equal(tableauFinalPrevu(3), false);
+});
+
+test('phase finale non jouée (choix de l’organisateur) : barème par rang de poule', () => {
   const a = classerPoule([1, 2], [{ a: 1, b: 2, sa: 2, sb: 0 }]).lignes;
   const b = classerPoule([3, 4], [{ a: 3, b: 4, sa: 0, sb: 2 }]).lignes;
   const pts = pointsSansTableauFinal([a, b]);
@@ -212,4 +217,65 @@ test('rang sportif : 58, 50, 50, 47 → 1, 2, 2, 4 (comme le tableur)', () => {
   const r = rangsSportifs([{ total: 50 }, { total: 47 }, { total: 58 }, { total: 50 }]);
   assert.deepEqual(r.map((x) => x.rang), [1, 2, 2, 4]);
   assert.deepEqual(r.map((x) => x.exAequo), [false, true, true, false]);
+});
+
+// ---------------------------------------------------------------- phase finale (David, 18/10/2026)
+
+/** Les matchs d'une poule de trois, gagnés par l'ordre donné. @param {number[]} ordre */
+const pouleDeTrois = (ordre) => {
+  const [x, y, z] = ordre;
+  return [{ a: x, b: y, sa: 2, sb: 0 }, { a: x, b: z, sa: 2, sb: 1 }, { a: y, b: z, sa: 2, sb: 1 }];
+};
+
+test('phase finale, nombre pair : seulement des rencontres, pas de poule de trois', () => {
+  const f = finaleDuTableau([1, 2, 3, 4, 5, 6, 7], [11, 12, 13, 14, 15, 16, 17]);
+  assert.equal(f.pouleFinale, null);
+  assert.equal(f.rencontres.length, 7);
+  assert.deepEqual(f.rencontres.at(-1)?.places, [13, 14]);
+});
+
+test('phase finale, nombre impair : les trois derniers jouent une poule de trois', () => {
+  // 15 joueurs : poules de 8 et de 7.
+  const A = [1, 2, 3, 4, 5, 6, 7, 8];
+  const B = [11, 12, 13, 14, 15, 16, 17];
+  const f = finaleDuTableau(A, B);
+  assert.equal(f.rencontres.length, 6, '1ers à 6es entre eux');
+  assert.deepEqual(f.rencontres.at(-1)?.places, [11, 12]);
+  assert.deepEqual(f.pouleFinale, { joueurs: [7, 17, 8], places: [13, 14, 15] });
+
+  const vainqueurs = { 1: 11, 2: 2, 3: 3, 4: 14, 5: 5, 6: 6 };
+  assert.equal(placesDepuisFinale(f, vainqueurs, []), null, 'poule de trois pas encore jouée');
+  const places = placesDepuisFinale(f, vainqueurs, pouleDeTrois([8, 7, 17]));
+  assert.ok(places);
+  const pts = pointsDepuisPlaces(places);
+  assert.equal(pts.length, 15);
+  assert.deepEqual(pts.slice(0, 2).map((p) => [p.id, p.points]), [[11, 15], [1, 14]]);
+  assert.deepEqual(pts.slice(-3).map((p) => [p.id, p.place, p.points]), [[8, 13, 3], [7, 14, 2], [17, 15, 1]]);
+});
+
+test('poule de trois à égalité parfaite : la tournante départage, comme en poule', () => {
+  const f = finaleDuTableau([1, 2], [3]);
+  assert.equal(f.rencontres.length, 0);
+  assert.deepEqual(f.pouleFinale, { joueurs: [1, 3, 2], places: [1, 2, 3] });
+  // Chacun gagne un match 2-1 : mêmes points, mêmes victoires.
+  const cycle = [{ a: 1, b: 3, sa: 2, sb: 1 }, { a: 3, b: 2, sa: 2, sb: 1 }, { a: 2, b: 1, sa: 2, sb: 1 }];
+  assert.equal(placesDepuisFinale(f, {}, cycle), null, 'il faut l’ordre de la tournante');
+  const places = placesDepuisFinale(f, {}, cycle, { '1-2-3': [2, 3, 1] });
+  assert.deepEqual(places, [{ id: 2, place: 1 }, { id: 3, place: 2 }, { id: 1, place: 3 }]);
+});
+
+test('poules retouchées (9 et 7) : pas de poule de trois, les joueurs en trop suivent leur poule', () => {
+  const f = finaleDuTableau([1, 2, 3, 4, 5, 6, 7, 8, 9], [11, 12, 13, 14, 15, 16, 17]);
+  assert.equal(f.pouleFinale, null);
+  assert.deepEqual(f.rencontres.slice(-2).map((r) => r.places), [[15], [16]]);
+});
+
+test('soirées enregistrées avant le 22/10/2026 : relues selon la règle d’alors', () => {
+  // Le choix écrit prime toujours.
+  assert.equal(tableauFinalEnregistre(true, 22), true);
+  assert.equal(tableauFinalEnregistre(false, 12), false);
+  // Absent : la règle d'alors, pas de tableau final au-delà de 17 joueurs.
+  assert.equal(tableauFinalEnregistre(undefined, 17), true);
+  assert.equal(tableauFinalEnregistre(undefined, 18), false);
+  assert.equal(tableauFinalEnregistre(null, 14), true);
 });
