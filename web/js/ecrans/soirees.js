@@ -117,6 +117,7 @@ export async function ecranSoiree(vue, [date]) {
 
   if (organisateur) {
     blocs.push(h('div', { class: 'actions' },
+      soiree.resultats.length > 0 ? h('a', { class: 'bouton-second', href: `#/saisie/${date}/verification` }, 'Corriger des points') : null,
       soiree.resultats.length > 0 ? h('a', { class: 'bouton-second', href: `#/saisie/${date}` }, 'Modifier la saisie') : null,
       soiree.resultats.length > 0 ? boutonConfirme('Effacer les points', 'Confirmer l’effacement', async () => {
         try {

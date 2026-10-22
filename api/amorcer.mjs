@@ -16,7 +16,8 @@
  */
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { validerNom, validerLibelle, validerDate, validerEtat } from './validation.mjs';
+import { validerNom, validerLibelle, validerDate } from './validation.mjs';
+import { renumeroterEtat } from './etat.mjs';
 import { semestreDe } from './donnees.mjs';
 
 const chemin = process.argv[2];
@@ -35,35 +36,11 @@ if (!/^\d{4}\/\d{4}$/.test(amorce.saison)) throw new Error('saison mal formée')
  * @param {Map<number, number>} ids
  */
 function renumeroter(etat, ids) {
-  if (!etat) return null;
-  /** @param {number} cle */
-  const n = (cle) => {
+  const v = renumeroterEtat(etat, (cle) => {
     const id = ids.get(cle);
     if (id === undefined) throw new Error(`joueur ${cle} inconnu dans l'état d'une soirée`);
     return id;
-  };
-  const copie = { ...etat };
-  if (etat.presents) copie.presents = etat.presents.map(n);
-  if (etat.ordre) copie.ordre = etat.ordre.map(n);
-  if (etat.poules) copie.poules = etat.poules.map((/** @type {number[]} */ p) => p.map(n));
-  if (etat.matchs) copie.matchs = etat.matchs.map((/** @type {any} */ m) => ({ ...m, a: n(m.a), b: n(m.b) }));
-  if (etat.vainqueurs) copie.vainqueurs = Object.fromEntries(Object.entries(etat.vainqueurs).map(([k, v]) => [k, n(Number(v))]));
-  if (etat.departages) {
-    copie.departages = Object.fromEntries(Object.entries(etat.departages).map(([, ordre]) => {
-      const ordreN = /** @type {number[]} */ (ordre).map(n);
-      return [[...ordreN].sort((a, b) => a - b).join('-'), ordreN];
-    }));
-  }
-  if (etat.finale) {
-    copie.finale = {
-      matchs: (etat.finale.matchs ?? []).map((/** @type {any} */ m) => ({ ...m, a: n(m.a), b: n(m.b) })),
-      departages: Object.fromEntries(Object.entries(etat.finale.departages ?? {}).map(([, ordre]) => {
-        const ordreN = /** @type {number[]} */ (ordre).map(n);
-        return [[...ordreN].sort((a, b) => a - b).join('-'), ordreN];
-      })),
-    };
-  }
-  const v = validerEtat(copie);
+  });
   if (!v.ok) throw new Error(`état invalide après renumérotation : ${v.erreur}`);
   return v.valeur;
 }

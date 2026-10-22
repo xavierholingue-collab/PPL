@@ -85,6 +85,16 @@ Trois façons de saisir une soirée :
   les points suivent la place (N joueurs : N points au 1er, 1 au dernier).
 - **Points directs** : on tape les points de chacun, comme dans le fichier.
 
+Après coup, l'organisateur peut :
+
+- **corriger des points** : bouton « Corriger des points » sur la page de la
+  soirée, qui ouvre directement le tableau des points ; une valeur corrigée à
+  la main reste signalée, avec le calcul d'origine ;
+- **fusionner deux fiches** du même joueur (inscrit sous deux noms) : sur la
+  fiche en trop, « Même personne qu'un autre joueur ». Ses points passent à
+  l'autre fiche, l'état des saisies est renuméroté, puis la fiche disparaît.
+  Refusé si les deux ont des points à une même soirée.
+
 La saisie en cours est gardée sur le téléphone, et l'application s'ouvre même
 sans réseau (service worker, réseau d'abord : en ligne, on sert toujours la
 dernière version) : au gymnase, on saisit la soirée hors connexion et on

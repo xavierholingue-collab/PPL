@@ -22,7 +22,7 @@ const ROUTES = [
   [/^\/classement$/, ecranClassement, 'classement'],
   [/^\/soirees$/, ecranSoirees, 'soirees'],
   [/^\/soiree\/(\d{4}-\d{2}-\d{2})$/, ecranSoiree, 'soirees'],
-  [/^\/saisie\/(\d{4}-\d{2}-\d{2})$/, ecranSaisie, 'soirees'],
+  [/^\/saisie\/(\d{4}-\d{2}-\d{2})(?:\/(verification))?$/, ecranSaisie, 'soirees'],
   [/^\/joueurs$/, ecranJoueurs, 'joueurs'],
   [/^\/joueur\/(\d{1,9})$/, ecranJoueur, 'joueurs'],
   [/^\/organisateur$/, ecranOrganisateur, 'organisateur'],

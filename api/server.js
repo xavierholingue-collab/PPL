@@ -19,11 +19,11 @@ import {
   Limiteur, origineAdmise,
 } from './securite.mjs';
 import {
-  validerDate, validerNouveauJoueur, validerModificationJoueur, validerSoiree,
+  validerDate, validerNouveauJoueur, validerModificationJoueur, validerSoiree, validerFusion,
 } from './validation.mjs';
 import {
   saisonCourante, bornesSaison, listeSoirees, classement, listeJoueurs, creerJoueur,
-  modifierJoueur, soireeParDate, enregistrerSoiree, effacerResultats,
+  modifierJoueur, fusionnerJoueurs, soireeParDate, enregistrerSoiree, effacerResultats,
 } from './donnees.mjs';
 import { versCsv, versOds, preparerTableau } from './export.mjs';
 
@@ -273,6 +273,18 @@ const ROUTES = [
         if (/** @type {{ code?: string }} */ (e).code === '23505') throw new ErreurHttp(409, 'un joueur porte déjà ce nom');
         throw e;
       }
+    },
+  },
+  {
+    // Le même joueur inscrit deux fois : ses points passent à l'autre fiche.
+    methode: 'POST', motif: /^\/api\/joueurs\/(\d{1,9})\/fusion$/, organisateur: true, corps: true,
+    gestion: async ({ res, params, corps }) => {
+      const de = Number(params[0]);
+      const v = validerFusion(corps, de);
+      if (!v.ok) throw new ErreurHttp(400, v.erreur);
+      const r = await fusionnerJoueurs(pool, de, v.valeur.vers);
+      if (!r.ok) throw new ErreurHttp(r.statut, r.erreur);
+      repondre(res, 200, { joueur: r.joueur, soirees: r.soirees });
     },
   },
   {

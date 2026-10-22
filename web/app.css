@@ -494,7 +494,8 @@ a { color: var(--accent-texte); text-decoration-thickness: 1px; text-underline-o
 
 .champ { display: flex; flex-direction: column; gap: var(--e-1); }
 .champ label { font-weight: 700; }
-input[type="text"], input[type="password"], input[type="search"], input[type="number"] {
+.carte .champ + .bouton-danger { margin-top: var(--e-3); }
+input[type="text"], input[type="password"], input[type="search"], input[type="number"], select {
   font: inherit;
   color: var(--encre);
   background: var(--papier);
@@ -504,7 +505,7 @@ input[type="text"], input[type="password"], input[type="search"], input[type="nu
   padding: 0 var(--e-3);
   width: 100%;
 }
-input:focus-visible { outline: 3px solid var(--balle-contour); outline-offset: 1px; border-color: var(--table); }
+input:focus-visible, select:focus-visible { outline: 3px solid var(--balle-contour); outline-offset: 1px; border-color: var(--table); }
 input[type="number"] { text-align: center; font-family: var(--police-chiffres); font-size: 1.3rem; font-weight: 700; }
 
 .interrupteur { display: flex; align-items: center; gap: var(--e-3); min-height: var(--cible); cursor: pointer; }

@@ -134,6 +134,7 @@ test('toute écriture est refusée sans session', async () => {
     ['DELETE', '/api/soirees/2026-10-21/resultats', undefined],
     ['POST', '/api/joueurs', { nom: 'Intrus' }],
     ['PATCH', '/api/joueurs/1', { nom: 'Intrus' }],
+    ['POST', '/api/joueurs/1/fusion', { vers: 2 }],
   ];
   for (const [methode, chemin, corps] of essais) {
     const r = await appel(/** @type {string} */ (chemin), { methode: /** @type {string} */ (methode), corps });
@@ -288,6 +289,65 @@ test('parcours complet : joueur, soirée, classement, effacement', { skip: !ECRI
   const off = await appel(`/api/joueurs/${j.json.id}`, { methode: 'PATCH', corps: { actif: false }, cookie: c });
   assert.equal(off.statut, 200);
   assert.equal(off.json.actif, false);
+});
+
+test('fusion de deux fiches du même joueur', { skip: !ECRITURES && 'ECRITURES=1 pour l’activer' }, async () => {
+  const c = await connexion();
+  const t = Date.now() % 100000;
+  /** @param {string} nom */
+  const creer = async (nom) => (await appel('/api/joueurs', { methode: 'POST', corps: { nom: `${nom} ${t}` }, cookie: c })).json.id;
+  const [a, b, x, y] = [await creer('Fusion A'), await creer('Fusion B'), await creer('Fusion X'), await creer('Fusion Y')];
+  const cle = (/** @type {number[]} */ ids) => [...ids].sort((p, q) => p - q).join('-');
+
+  // Le 21/07, A joue une poule (matchs, tournante, point corrigé) ; le 14/07, B joue sans A.
+  const poule = [a, x, y];
+  const r1 = await appel('/api/soirees/2027-07-21', {
+    methode: 'PUT', cookie: c,
+    corps: {
+      format: 'poules',
+      etat: {
+        version: 1, mode: 'poules', presents: poule, poules: [poule],
+        matchs: [{ a, b: x, sa: 2, sb: 1 }, { a: x, b: y, sa: 2, sb: 1 }, { a: y, b: a, sa: 2, sb: 1 }],
+        departages: { [cle(poule)]: [a, x, y] }, ajustements: { [String(a)]: 4 },
+      },
+      resultats: [{ joueur_id: a, points: 4, place: 1 }, { joueur_id: x, points: 2, place: 2 }, { joueur_id: y, points: 1, place: 3 }],
+    },
+  });
+  assert.equal(r1.statut, 200);
+  const r2 = await appel('/api/soirees/2027-07-14', {
+    methode: 'PUT', cookie: c,
+    corps: {
+      format: 'classement', etat: { version: 1, mode: 'classement', presents: [b, x], ordre: [b, x] },
+      resultats: [{ joueur_id: b, points: 2, place: 1 }, { joueur_id: x, points: 1, place: 2 }],
+    },
+  });
+  assert.equal(r2.statut, 200);
+
+  // Refus : soi-même, inconnu, et deux joueurs présents le même soir.
+  assert.equal((await appel(`/api/joueurs/${a}/fusion`, { methode: 'POST', corps: { vers: a }, cookie: c })).statut, 400);
+  assert.equal((await appel(`/api/joueurs/${a}/fusion`, { methode: 'POST', corps: { vers: 'b' }, cookie: c })).statut, 400);
+  assert.equal((await appel('/api/joueurs/999999/fusion', { methode: 'POST', corps: { vers: b }, cookie: c })).statut, 404);
+  const meme = await appel(`/api/joueurs/${x}/fusion`, { methode: 'POST', corps: { vers: b }, cookie: c });
+  assert.equal(meme.statut, 409, 'X et B ont joué le même soir : deux personnes');
+  assert.match(meme.json.erreur, /14\/07\/2027/);
+
+  // A rejoint B : ses points, et partout où l'état des saisies le cite.
+  const f = await appel(`/api/joueurs/${a}/fusion`, { methode: 'POST', corps: { vers: b }, cookie: c });
+  assert.equal(f.statut, 200);
+  assert.equal(f.json.soirees, 1);
+  const joueurs = (await appel('/api/joueurs')).json.joueurs;
+  assert.equal(joueurs.find((/** @type {any} */ j) => j.id === a), undefined, 'la fiche A a disparu');
+  const cl = (await appel('/api/classement')).json.joueurs.find((/** @type {any} */ j) => j.id === b);
+  assert.equal(cl.s2.total, 6, 'les points s’additionnent : 4 + 2');
+  const e = (await appel('/api/soirees/2027-07-21')).json.etat;
+  assert.deepEqual(e.presents, [b, x, y]);
+  assert.deepEqual(e.poules, [[b, x, y]]);
+  assert.deepEqual(e.matchs[0], { a: b, b: x, sa: 2, sb: 1 });
+  assert.deepEqual(e.departages, { [cle([b, x, y])]: [b, x, y] });
+  assert.deepEqual(e.ajustements, { [String(b)]: 4 });
+
+  for (const d of ['2027-07-21', '2027-07-14']) await appel(`/api/soirees/${d}/resultats`, { methode: 'DELETE', cookie: c });
+  for (const id of [b, x, y]) await appel(`/api/joueurs/${id}`, { methode: 'PATCH', corps: { actif: false }, cookie: c });
 });
 
 test('dix essais ratés bloquent l’adresse', { skip: !ECRITURES && 'ECRITURES=1 pour l’activer' }, async () => {

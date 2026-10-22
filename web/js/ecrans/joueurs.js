@@ -3,7 +3,7 @@
  * Les joueurs du club, et la saison de chacun.
  */
 import { api, chargerJoueurs, chargerClassement, chargerCalendrier, etat, oublier } from '../api.js';
-import { h, remplir, marqueur, ordinal, pluriel, alpha, jourMois, dateLongue, annoncer, rafraichir, icone } from '../ui.js';
+import { h, remplir, marqueur, ordinal, pluriel, alpha, jourMois, dateLongue, annoncer, rafraichir, icone, boutonConfirme } from '../ui.js';
 
 /** @param {HTMLElement} vue */
 export async function ecranJoueurs(vue) {
@@ -58,6 +58,40 @@ export async function ecranJoueurs(vue) {
     archives.length ? h('section', { class: 'section' },
       h('h2', null, 'Joueurs archivés'),
       h('ul', { class: 'liste-simple' }, archives.map(ligne))) : null);
+}
+
+/**
+ * Le même joueur inscrit deux fois, sous deux noms : on garde une
+ * fiche, l'autre lui donne ses points et disparaît.
+ * @param {{ id: number, nom: string }} j
+ * @param {{ id: number, nom: string, actif: boolean }[]} joueurs
+ */
+function carteFusion(j, joueurs) {
+  const autres = joueurs.filter((x) => x.id !== j.id).sort((x, y) => alpha(x.nom, y.nom));
+  const choix = /** @type {HTMLSelectElement} */ (h('select', { id: 'fusion-vers' },
+    h('option', { value: '' }, 'Choisir le joueur à garder'),
+    autres.map((x) => h('option', { value: String(x.id) }, x.actif ? x.nom : `${x.nom} (archivé)`))));
+  const erreur = h('p', { class: 'message-erreur', role: 'alert' });
+  const bouton = boutonConfirme('Fusionner', 'Confirmer la fusion', async () => {
+    erreur.textContent = '';
+    const vers = Number(choix.value);
+    if (!vers) { erreur.textContent = 'Choisissez d’abord le joueur à garder.'; return; }
+    try {
+      const r = await api(`/joueurs/${j.id}/fusion`, { methode: 'POST', corps: { vers } });
+      oublier();
+      annoncer(`${j.nom} fusionné avec ${r.joueur.nom} : ${pluriel(r.soirees, 'soirée')} reprise${r.soirees > 1 ? 's' : ''}`);
+      location.hash = `#/joueur/${vers}`;
+    } catch (e) {
+      erreur.textContent = /** @type {Error} */ (e).message;
+    }
+  });
+  return h('div', { class: 'carte' },
+    h('h2', null, 'Même personne qu’un autre joueur'),
+    h('p', { class: 'aide' }, `Les points de ${j.nom} passent au joueur choisi, puis ${j.nom} disparaît de la liste. `,
+      'Impossible si les deux ont des points à la même soirée.'),
+    h('div', { class: 'champ' }, h('label', { for: 'fusion-vers' }, 'Garder'), choix),
+    bouton,
+    erreur);
 }
 
 /** @param {HTMLElement} vue @param {string[]} params */
@@ -125,6 +159,7 @@ export async function ecranJoueur(vue, [idTexte]) {
       onclick: () => void modifier({ actif: !j.actif }, j.actif ? 'Joueur archivé' : 'Joueur réactivé'),
     }, j.actif ? 'Archiver ce joueur (il ne sera plus proposé à la saisie)' : 'Réactiver ce joueur'),
     erreur));
+    blocs.push(carteFusion(j, joueurs));
   }
 
   remplir(vue,

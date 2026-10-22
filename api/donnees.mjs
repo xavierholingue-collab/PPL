@@ -4,6 +4,8 @@
  * venue de l'extérieur n'est jamais collée dans le texte d'une requête.
  */
 
+import { renumeroterEtat } from './etat.mjs';
+
 /** @typedef {import('pg').Pool} Pool */
 /** @typedef {import('pg').PoolClient} Client */
 
@@ -155,6 +157,63 @@ export async function modifierJoueur(pool, id, modif) {
       await client.query(`insert into journal (action, detail) values ('joueur_modifie', $1)`, [{ id, champs: Object.keys(modif) }]);
     }
     return rows[0] ?? null;
+  });
+}
+
+/**
+ * Fusionne deux fiches du même joueur (inscrit deux fois, sous deux noms) :
+ * les points de `de` passent à `vers`, l'état des saisies est renuméroté,
+ * puis la fiche `de` est supprimée. Tout ou rien.
+ *
+ * REFUSÉE si les deux ont des points à une même soirée : une personne ne
+ * joue pas deux fois le même soir, ce sont donc deux joueurs différents.
+ * @param {Pool} pool @param {number} de @param {number} vers
+ * @returns {Promise<
+ *   | { ok: true, joueur: { id: number, nom: string, actif: boolean }, soirees: number }
+ *   | { ok: false, statut: 404 | 409, erreur: string }>}
+ */
+export async function fusionnerJoueurs(pool, de, vers) {
+  return enTransaction(pool, async (client) => {
+    const { rows: fiches } = await client.query(
+      'select id, nom_affiche as nom, actif from joueurs where id = any($1::int[]) order by id for update', [[de, vers]]);
+    const source = fiches.find((f) => f.id === de);
+    const cible = fiches.find((f) => f.id === vers);
+    if (!source || !cible) return { ok: false, statut: 404, erreur: 'joueur introuvable' };
+
+    const { rows: ensemble } = await client.query(
+      `select to_char(s.date_soiree, 'DD/MM/YYYY') as date
+         from resultats a
+         join resultats b on b.soiree_id = a.soiree_id and b.joueur_id = $2
+         join soirees s on s.id = a.soiree_id
+        where a.joueur_id = $1
+        order by s.date_soiree`,
+      [de, vers]);
+    if (ensemble.length > 0) {
+      return {
+        ok: false, statut: 409,
+        erreur: `${source.nom} et ${cible.nom} ont tous les deux des points le ${ensemble.map((r) => r.date).join(', ')} : ce sont deux joueurs différents`,
+      };
+    }
+
+    // Tous les états d'abord, sans rien écrire : un seul qui ne se
+    // renumérote pas proprement, et rien n'est touché.
+    const { rows: soirees } = await client.query(
+      `select id, etat, to_char(date_soiree, 'DD/MM/YYYY') as date from soirees where etat is not null for update`);
+    /** @type {{ id: number, etat: unknown }[]} */
+    const nouveaux = [];
+    for (const s of soirees) {
+      const avant = JSON.stringify(s.etat);
+      const v = renumeroterEtat(s.etat, (id) => (id === de ? vers : id));
+      if (!v.ok) return { ok: false, statut: 409, erreur: `soirée du ${s.date} : ${v.erreur}` };
+      if (JSON.stringify(v.valeur) !== avant) nouveaux.push({ id: s.id, etat: v.valeur });
+    }
+
+    for (const n of nouveaux) await client.query('update soirees set etat = $2, modifie_le = now() where id = $1', [n.id, n.etat]);
+    const deplaces = await client.query('update resultats set joueur_id = $2 where joueur_id = $1', [de, vers]);
+    await client.query('delete from joueurs where id = $1', [de]);
+    await client.query(`insert into journal (action, detail) values ('joueurs_fusionnes', $1)`,
+      [{ de: { id: de, nom: source.nom }, vers: { id: vers, nom: cible.nom }, soirees: deplaces.rowCount }]);
+    return { ok: true, joueur: cible, soirees: deplaces.rowCount ?? 0 };
   });
 }
 

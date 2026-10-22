@@ -190,7 +190,7 @@ function melanger(t) {
 // ---------------------------------------------------------------- écran
 
 /** @param {HTMLElement} vue @param {string[]} params */
-export async function ecranSaisie(vue, [date]) {
+export async function ecranSaisie(vue, [date, etapeDemandee]) {
   if (!etat.session?.organisateur) {
     remplir(vue,
       h('div', { class: 'titre-page' }, h('h1', null, 'Saisie des points')),
@@ -227,6 +227,8 @@ export async function ecranSaisie(vue, [date]) {
     repris = true;
   } else if (dejaEnregistree) {
     b = brouillonDepuisServeur(date, serveur);
+    // « Corriger des points » : droit au tableau des points, sans repasser par les matchs.
+    if (etapeDemandee === 'verification') b.etape = 'verification';
   } else {
     b = brouillonVide(date);
     b.libelle = auCalendrier?.libelle ?? null;

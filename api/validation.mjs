@@ -70,6 +70,20 @@ export function validerNouveauJoueur(corps) {
 }
 
 /**
+ * Fusion de deux joueurs : { vers }, le joueur qu'on garde (autre que celui
+ * qu'on fusionne).
+ * @param {unknown} corps
+ * @param {number} de
+ * @returns {Resultat<{ vers: number }>}
+ */
+export function validerFusion(corps, de) {
+  if (!objet(corps)) return { ok: false, erreur: 'objet attendu' };
+  if (!idValide(corps.vers)) return { ok: false, erreur: 'vers : identifiant de joueur attendu' };
+  if (corps.vers === de) return { ok: false, erreur: 'un joueur ne se fusionne pas avec lui-même' };
+  return { ok: true, valeur: { vers: /** @type {number} */ (corps.vers) } };
+}
+
+/**
  * Modification d'un joueur : { nom?, actif? }, au moins l'un des deux.
  * @param {unknown} corps
  * @returns {Resultat<{ nom?: string, actif?: boolean }>}
