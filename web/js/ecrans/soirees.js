@@ -101,14 +101,20 @@ export async function ecranSoiree(vue, [date]) {
       h('strong', null, date > jour ? 'Soirée à venir.' : 'Pas encore de points pour cette soirée.'),
       organisateur && soiree.compte ? h('a', { class: 'bouton', href: `#/saisie/${date}` }, 'Saisir les points') : null));
   } else {
+    const blesses = new Set(Array.isArray(soiree.etat?.blesses) ? soiree.etat.blesses : []);
+    const abandons = /** @type {number[]} */ (Array.isArray(soiree.etat?.abandons) ? soiree.etat.abandons : []);
     blocs.push(h('section', { class: 'section', 'aria-labelledby': 'titre-points' },
       h('h2', { id: 'titre-points' }, 'Points de la soirée'),
       h('table', { class: 'tableau' },
         h('thead', null, h('tr', null, h('th', { class: 'rang', scope: 'col' }, 'Place'), h('th', { scope: 'col' }, 'Joueur'), h('th', { class: 'nombre', scope: 'col' }, 'Points'))),
         h('tbody', null, soiree.resultats.map((/** @type {any} */ r) => h('tr', null,
           h('td', { class: 'rang' }, r.place ? ordinal(r.place) : ''),
-          h('td', null, h('a', { href: `#/joueur/${r.joueur_id}` }, r.nom)),
-          h('td', { class: 'nombre' }, r.points)))))));
+          h('td', null, h('a', { href: `#/joueur/${r.joueur_id}` }, r.nom),
+            blesses.has(r.joueur_id) ? h('small', null, ' (présent, ne joue pas)') : null),
+          h('td', { class: 'nombre' }, r.points))))),
+      abandons.length > 0
+        ? h('p', { class: 'aide' }, `Blessé${abandons.length > 1 ? 's' : ''} en cours de soirée, sans point : ${abandons.map(nom).join(', ')}.`)
+        : null));
   }
 
   if (soiree.etat?.mode === 'poules' && Array.isArray(soiree.etat.poules)) {

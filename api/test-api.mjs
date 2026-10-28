@@ -215,6 +215,9 @@ test('les saisies mal formées sont refusées avant la base', async () => {
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', matchs: [{ a: 1, b: 1, sa: 2, sb: 0 }] }, resultats: [] }, 400],
     // La poule de trois de la phase finale : trois matchs au plus, bien formés.
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: 'trois' }, resultats: [] }, 400],
+    // Présents qui ne jouent pas, blessés en cours de soirée : des listes de joueurs.
+    ['/api/soirees/2026-10-21', { format: 'classement', etat: { version: 1, mode: 'classement', blesses: 'tous' }, resultats: [] }, 400],
+    ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', abandons: [1, 1] }, resultats: [] }, 400],
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: { matchs: [{ a: 1, b: 2, sa: 3, sb: 0 }] } }, resultats: [] }, 400],
     ['/api/soirees/2026-10-21', { format: 'poules', etat: { version: 1, mode: 'poules', finale: { matchs: Array.from({ length: 4 }, (_, i) => ({ a: 1, b: i + 2, sa: 2, sb: 0 })) } }, resultats: [] }, 400],
     ['/api/soirees/2026-02-30', { format: 'libre', resultats: [] }, 400],
@@ -323,6 +326,16 @@ test('fusion de deux fiches du même joueur', { skip: !ECRITURES && 'ECRITURES=1
     },
   });
   assert.equal(r2.statut, 200);
+  // Le 07/07, A est présent mais blessé : il ne joue pas et prend 1 point.
+  const r3 = await appel('/api/soirees/2027-07-07', {
+    methode: 'PUT', cookie: c,
+    corps: {
+      format: 'classement', etat: { version: 1, mode: 'classement', presents: [a, x], ordre: [x], blesses: [a] },
+      resultats: [{ joueur_id: x, points: 1, place: 1 }, { joueur_id: a, points: 1, place: null }],
+    },
+  });
+  assert.equal(r3.statut, 200);
+  assert.deepEqual(r3.json.etat.blesses, [a], 'les blessés présents sont gardés avec la soirée');
 
   // Refus : soi-même, inconnu, et deux joueurs présents le même soir.
   assert.equal((await appel(`/api/joueurs/${a}/fusion`, { methode: 'POST', corps: { vers: a }, cookie: c })).statut, 400);
@@ -335,11 +348,12 @@ test('fusion de deux fiches du même joueur', { skip: !ECRITURES && 'ECRITURES=1
   // A rejoint B : ses points, et partout où l'état des saisies le cite.
   const f = await appel(`/api/joueurs/${a}/fusion`, { methode: 'POST', corps: { vers: b }, cookie: c });
   assert.equal(f.statut, 200);
-  assert.equal(f.json.soirees, 1);
+  assert.equal(f.json.soirees, 2);
   const joueurs = (await appel('/api/joueurs')).json.joueurs;
   assert.equal(joueurs.find((/** @type {any} */ j) => j.id === a), undefined, 'la fiche A a disparu');
   const cl = (await appel('/api/classement')).json.joueurs.find((/** @type {any} */ j) => j.id === b);
-  assert.equal(cl.s2.total, 6, 'les points s’additionnent : 4 + 2');
+  assert.equal(cl.s2.total, 7, 'les points s’additionnent : 4 + 2 + 1');
+  assert.deepEqual((await appel('/api/soirees/2027-07-07')).json.etat.blesses, [b], 'le blessé est renuméroté aussi');
   const e = (await appel('/api/soirees/2027-07-21')).json.etat;
   assert.deepEqual(e.presents, [b, x, y]);
   assert.deepEqual(e.poules, [[b, x, y]]);
@@ -347,7 +361,7 @@ test('fusion de deux fiches du même joueur', { skip: !ECRITURES && 'ECRITURES=1
   assert.deepEqual(e.departages, { [cle([b, x, y])]: [b, x, y] });
   assert.deepEqual(e.ajustements, { [String(b)]: 4 });
 
-  for (const d of ['2027-07-21', '2027-07-14']) await appel(`/api/soirees/${d}/resultats`, { methode: 'DELETE', cookie: c });
+  for (const d of ['2027-07-21', '2027-07-14', '2027-07-07']) await appel(`/api/soirees/${d}/resultats`, { methode: 'DELETE', cookie: c });
   for (const id of [b, x, y]) await appel(`/api/joueurs/${id}`, { methode: 'PATCH', corps: { actif: false }, cookie: c });
 });
 

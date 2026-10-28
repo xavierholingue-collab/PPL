@@ -192,6 +192,14 @@ export function validerEtat(etat) {
   /** @type {Record<string, unknown>} */
   const propre = { version: 1, mode: etat.mode, presents };
 
+  // Présents qui ne jouent pas (1 point) ; blessés en cours de soirée
+  // (retirés de leur poule, sans point).
+  for (const champ of ['blesses', 'abandons']) {
+    if (etat[champ] === undefined) continue;
+    const ids = listeIds(etat[champ], MAX_JOUEURS_SOIREE);
+    if (!ids) return { ok: false, erreur: `état : liste ${champ} invalide` };
+    propre[champ] = ids;
+  }
   if (etat.ordre !== undefined) {
     const ordre = listeIds(etat.ordre, MAX_JOUEURS_SOIREE);
     if (!ordre) return { ok: false, erreur: 'état : ordre invalide' };

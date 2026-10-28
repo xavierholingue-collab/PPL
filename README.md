@@ -96,6 +96,12 @@ Trois façons de saisir une soirée :
   les points suivent la place (N joueurs : N points au 1er, 1 au dernier).
 - **Points directs** : on tape les points de chacun, comme dans le fichier.
 
+Joueurs blessés (règles posées le 28/10/2026, à confirmer par David) : un
+joueur présent qui ne peut pas jouer de la soirée prend 1 point, sans compter
+dans le nombre de joueurs classés (étape « Qui est là ? ») ; un joueur qui se
+blesse en cours de poule en sort, ses matchs ne comptent plus et il ne prend
+pas de point (étape des matchs, « Un joueur se blesse ? »).
+
 Après coup, l'organisateur peut :
 
 - **corriger des points** : bouton « Corriger des points » sur la page de la

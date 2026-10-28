@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * L'état d'un assistant de saisie (poules, classement…) cite les joueurs par
- * leur identifiant, à bien des endroits : présents, ordre d'arrivée, poules,
+ * leur identifiant, à bien des endroits : présents, blessés, ordre d'arrivée, poules,
  * matchs, départages, vainqueurs du tableau final, poule de trois, points
  * corrigés. Les renuméroter se fait ICI et nulle part ailleurs : l'amorce
  * (identifiants du tableur → identifiants de la base) et la fusion de deux
@@ -27,6 +27,8 @@ export function renumeroterEtat(etat, n) {
   const copie = { ...etat };
   if (etat.presents) copie.presents = etat.presents.map(n);
   if (etat.ordre) copie.ordre = etat.ordre.map(n);
+  if (etat.blesses) copie.blesses = etat.blesses.map(n);
+  if (etat.abandons) copie.abandons = etat.abandons.map(n);
   if (etat.poules) copie.poules = etat.poules.map((/** @type {number[]} */ p) => p.map(n));
   if (etat.matchs) copie.matchs = etat.matchs.map((/** @type {any} */ m) => ({ ...m, a: n(m.a), b: n(m.b) }));
   if (etat.vainqueurs) copie.vainqueurs = Object.fromEntries(Object.entries(etat.vainqueurs).map(([k, v]) => [k, n(Number(v))]));

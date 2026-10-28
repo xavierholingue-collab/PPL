@@ -12,7 +12,7 @@
  * feuille du 16 septembre.
  */
 import { api, chargerJoueurs, chargerCalendrier, chargerClassement, etat, oublier } from '../api.js';
-import { h, remplir, annoncer, dateTitre, dateLongue, ordinal, pluriel, alpha } from '../ui.js';
+import { h, remplir, annoncer, dateTitre, dateLongue, ordinal, pluriel, alpha, boutonConfirme } from '../ui.js';
 import * as R from '../regles.js';
 import { lireBrouillon, ecrireBrouillon, effacerBrouillon } from '../brouillon.js';
 
@@ -23,7 +23,7 @@ import { lireBrouillon, ecrireBrouillon, effacerBrouillon } from '../brouillon.j
 /**
  * @typedef {{
  *   version: 1, date: string, etape: Etape, mode: Mode | null,
- *   presents: number[], libelle: string | null, compte: boolean,
+ *   presents: number[], blesses: number[], abandons: number[], libelle: string | null, compte: boolean,
  *   nbPoules: number, methode: 'classement' | 'hasard', poules: number[][],
  *   matchs: R.Match[], departages: Record<string, number[]>,
  *   tableauFinal: boolean | null, vainqueurs: Record<string, number>,
@@ -42,7 +42,7 @@ const NUMERO_ETAPE = { presents: 0, format: 1, composition: 2, matchs: 2, tablea
 /** @param {string} date @returns {Brouillon} */
 function brouillonVide(date) {
   return {
-    version: 1, date, etape: 'presents', mode: null, presents: [], libelle: null, compte: true,
+    version: 1, date, etape: 'presents', mode: null, presents: [], blesses: [], abandons: [], libelle: null, compte: true,
     nbPoules: 2, methode: 'classement', poules: [], matchs: [], departages: {},
     tableauFinal: null, vainqueurs: {}, finale: { matchs: [], departages: {} },
     ordre: [], points: {}, ajustements: {}, pouleOuverte: 0, anciennesPoules: {},
@@ -61,6 +61,8 @@ function brouillonDepuisServeur(date, soiree) {
   const e = soiree.etat;
   const presents = soiree.resultats.map((/** @type {any} */ r) => r.joueur_id);
   b.presents = Array.isArray(e?.presents) && e.presents.length > 0 ? e.presents : presents;
+  b.blesses = Array.isArray(e?.blesses) ? e.blesses : [];
+  b.abandons = Array.isArray(e?.abandons) ? e.abandons : [];
   if (e?.mode === 'poules' && Array.isArray(e.poules)) {
     Object.assign(b, {
       mode: 'poules', etape: 'matchs', poules: e.poules, nbPoules: e.poules.length,
@@ -105,6 +107,16 @@ function tableauJoue(b) {
   return b.tableauFinal ?? R.tableauFinalPrevu(2);
 }
 
+/**
+ * Les joueurs qui jouent ce soir : les présents, moins ceux qui ne peuvent
+ * pas jouer (blessés, 1 point) et ceux qui se sont blessés en cours de
+ * poule (retirés, sans point).
+ * @param {Brouillon} b
+ */
+function jouent(b) {
+  return b.presents.filter((id) => !b.blesses.includes(id) && !b.abandons.includes(id));
+}
+
 /** La phase finale, d'après le classement des deux poules. @param {Brouillon} b */
 function finaleDe(b) {
   const cls = classementsDePoules(b);
@@ -118,11 +130,20 @@ function finaleDe(b) {
  * @returns {Resultat[] | null}
  */
 function resultatsCalcules(b) {
+  const calc = resultatsDesJoueurs(b);
+  if (!calc) return null;
+  // Présent mais blessé, sans jouer : 1 point, sans place (hypothèse du 28/10/2026, voir regles.js).
+  const blesses = b.blesses.filter((id) => b.presents.includes(id) && !calc.some((r) => r.joueur_id === id));
+  return [...calc, ...blesses.map((id) => ({ joueur_id: id, points: R.POINTS_PRESENT_SANS_JOUER, place: null }))];
+}
+
+/** Les points de ceux qui ont joué. @param {Brouillon} b @returns {Resultat[] | null} */
+function resultatsDesJoueurs(b) {
   if (b.mode === 'libre') {
-    return b.presents.map((id) => ({ joueur_id: id, points: b.points[String(id)] ?? 0, place: null }));
+    return jouent(b).map((id) => ({ joueur_id: id, points: b.points[String(id)] ?? 0, place: null }));
   }
   if (b.mode === 'classement') {
-    if (b.ordre.length !== b.presents.length) return null;
+    if (b.ordre.length !== jouent(b).length) return null;
     return R.pointsDepuisPlaces(b.ordre.map((id, i) => ({ id, place: i + 1 })))
       .map((p) => ({ joueur_id: p.id, points: p.points, place: p.place }));
   }
@@ -161,6 +182,17 @@ function resultatsFinaux(b) {
 function etatPourServeur(b) {
   const presents = new Set(b.presents);
   const ajustements = Object.fromEntries(Object.entries(b.ajustements).filter(([id]) => presents.has(Number(id))));
+  const blesses = b.blesses.filter((id) => presents.has(id));
+  const abandons = b.abandons.filter((id) => presents.has(id));
+  return {
+    ...etatDuMode(b, ajustements),
+    ...(blesses.length > 0 ? { blesses } : {}),
+    ...(abandons.length > 0 && b.mode === 'poules' ? { abandons } : {}),
+  };
+}
+
+/** @param {Brouillon} b @param {Record<string, number>} ajustements */
+function etatDuMode(b, ajustements) {
   if (b.mode === 'poules') {
     const pouleDe = new Map(b.poules.flatMap((p, i) => p.map((id) => [id, i])));
     const matchs = b.matchs.filter((m) => pouleDe.has(m.a) && pouleDe.get(m.a) === pouleDe.get(m.b));
@@ -237,6 +269,9 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
 
   // Un brouillon gardé avant la poule de trois (octobre 2026) n'en a pas.
   b.finale = { matchs: b.finale?.matchs ?? [], departages: b.finale?.departages ?? {} };
+  // Ni l'un ni l'autre avant le 28/10/2026.
+  b.blesses = b.blesses ?? [];
+  b.abandons = b.abandons ?? [];
 
   const nomDe = new Map(joueurs.map((j) => [j.id, j.nom]));
   /** @param {number} id */
@@ -326,9 +361,32 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
   function etapePresents() {
     const compteur = h('span', null);
     const continuer = /** @type {HTMLButtonElement} */ (h('button', { type: 'button', class: 'bouton', onclick: () => aller('format') }, 'Continuer'));
+    const zoneBlesses = h('div', { class: 'section' });
     const maj = () => {
-      compteur.textContent = pluriel(b.presents.length, 'joueur présent', 'joueurs présents');
-      continuer.disabled = b.presents.length < 2;
+      const sansJouer = b.blesses.filter((id) => b.presents.includes(id)).length;
+      compteur.textContent = pluriel(b.presents.length, 'joueur présent', 'joueurs présents')
+        + (sansJouer > 0 ? `, dont ${sansJouer} qui ne ${sansJouer > 1 ? 'jouent' : 'joue'} pas` : '');
+      continuer.disabled = jouent(b).length < 2;
+      dessinerBlesses();
+    };
+    // Présent mais incapable de jouer (blessé) : 1 point, sans place.
+    const dessinerBlesses = () => {
+      if (b.presents.length === 0) { remplir(zoneBlesses); return; }
+      remplir(zoneBlesses,
+        h('h2', null, 'Présent, mais ne joue pas ?'),
+        h('p', { class: 'aide' }, `Un joueur présent qui ne peut pas jouer ce soir (blessé) prend ${pluriel(R.POINTS_PRESENT_SANS_JOUER, 'point')}. Touchez-le ici.`),
+        h('ul', { class: 'puces', 'aria-label': 'Présents qui ne jouent pas' },
+          [...b.presents].sort((x, y) => alpha(nom(x), nom(y))).map((id) => h('li', null, h('button', {
+            type: 'button', class: 'puce', 'aria-pressed': String(b.blesses.includes(id)),
+            'aria-label': `${nom(id)} ne joue pas ce soir`,
+            onclick: () => {
+              const i = b.blesses.indexOf(id);
+              if (i >= 0) b.blesses.splice(i, 1);
+              else { b.blesses.push(id); b.abandons = b.abandons.filter((x) => x !== id); retirerPartout(id); }
+              sauver();
+              maj();
+            },
+          }, nom(id))))));
     };
     const recherche = /** @type {HTMLInputElement} */ (h('input', { type: 'search', id: 'cherche-joueur', placeholder: 'Chercher un prénom', autocomplete: 'off' }));
     const liste = h('ul', { class: 'puces', 'aria-label': 'Joueurs' });
@@ -343,7 +401,11 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
           if (i >= 0) b.presents.splice(i, 1); else b.presents.push(j.id);
           b_.setAttribute('aria-pressed', String(i < 0));
           // Un joueur retiré des présents sort aussi des poules et du classement.
-          if (i >= 0) retirerPartout(j.id);
+          if (i >= 0) {
+            retirerPartout(j.id);
+            b.blesses = b.blesses.filter((x) => x !== j.id);
+            b.abandons = b.abandons.filter((x) => x !== j.id);
+          }
           sauver();
           maj();
         },
@@ -405,6 +467,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
       liste,
       archives,
       ajout,
+      zoneBlesses,
       h('div', { class: 'barre-action' }, h('p', { class: 'aide', role: 'status' }, compteur), continuer),
     ];
   }
@@ -475,7 +538,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
   // ---------------------------------------------------------- 3a. poules : composition
 
   function composer() {
-    const ordre = b.methode === 'hasard' ? melanger(b.presents) : parForce(b.presents);
+    const ordre = b.methode === 'hasard' ? melanger(jouent(b)) : parForce(jouent(b));
     b.poules = R.repartirEnSerpentin(ordre, b.nbPoules);
     b.matchs = [];
     b.departages = {};
@@ -490,7 +553,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
    */
   function placerRetardataires() {
     const places = new Set(b.poules.flat());
-    const manquants = b.presents.filter((id) => !places.has(id));
+    const manquants = jouent(b).filter((id) => !places.has(id));
     for (const id of manquants) {
       // Recoché après un retrait : il retrouve sa poule, et donc ses matchs.
       const ancienne = b.anciennesPoules[String(id)];
@@ -514,13 +577,13 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
 
   function etapeComposition() {
     if (b.poules.length === 0) {
-      b.nbPoules = R.nbPoulesConseille(b.presents.length);
+      b.nbPoules = R.nbPoulesConseille(jouent(b).length);
       composer();
       sauver();
     } else {
       placerRetardataires();
     }
-    const conseil = R.nbPoulesConseille(b.presents.length);
+    const conseil = R.nbPoulesConseille(jouent(b).length);
     const zone = h('div', { class: 'poules-compo' });
     const info = h('p', { class: 'aide', role: 'status' });
     const zoneConfirmation = h('div', { 'aria-live': 'assertive' });
@@ -563,7 +626,6 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
             });
           },
         }, h('span', null, nom(id)), b.poules.length > 1 ? h('span', { 'aria-hidden': 'true' }, '⇄') : null)))))));
-      const n = b.presents.length;
       info.textContent = b.poules.length === 2
         ? (Math.abs(b.poules[0].length - b.poules[1].length) !== 1
           ? 'Après les poules, le tableau final : 1er de A contre 1er de B, 2e contre 2e, et ainsi de suite.'
@@ -602,7 +664,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
     return [
       h('h1', null, 'Les poules'),
       h('div', { class: 'reglage' },
-        h('span', null, 'Nombre de poules', h('br'), h('span', { class: 'aide' }, `Conseillé pour ${b.presents.length} joueurs : ${conseil}`)),
+        h('span', null, 'Nombre de poules', h('br'), h('span', { class: 'aide' }, `Conseillé pour ${jouent(b).length} joueurs : ${conseil}`)),
         h('span', { class: 'compteur' },
           h('button', { type: 'button', 'aria-label': 'Une poule de moins', onclick: () => changerNombre(-1) }, '−'),
           sortie,
@@ -722,7 +784,39 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
     const progression = h('div', { class: 'progression' });
     const zoneMatchs = h('div', { class: 'section' });
     const zoneClassement = h('div', { class: 'section' });
+    const zoneAbandon = h('div', { class: 'section' });
     const suivant = /** @type {HTMLButtonElement} */ (h('button', { type: 'button', class: 'bouton' }));
+
+    // Blessé en cours de soirée (hypothèse du 28/10/2026, voir regles.js) :
+    // il sort de sa poule, ses matchs ne comptent plus, il ne prend pas de
+    // point. Ses matchs restent dans le brouillon : « Annuler » le remet.
+    const dessinerAbandon = () => {
+      const choix = /** @type {HTMLSelectElement} */ (h('select', { id: 'abandon-joueur' },
+        h('option', { value: '' }, 'Choisir le joueur'),
+        b.poules.flat().sort((x, y) => alpha(nom(x), nom(y))).map((id) => h('option', { value: String(id) }, nom(id)))));
+      const erreurAbandon = h('p', { class: 'message-erreur', role: 'alert' });
+      remplir(zoneAbandon,
+        h('h2', null, 'Un joueur se blesse ?'),
+        h('p', { class: 'aide' }, 'Il sort de sa poule : ses matchs ne comptent plus, et il ne prend pas de point ce soir.'),
+        h('div', { class: 'champ' }, h('label', { for: 'abandon-joueur' }, 'Joueur blessé'), choix),
+        boutonConfirme('Retirer de sa poule', 'Confirmer le retrait', async () => {
+          const id = Number(choix.value);
+          if (!id) { erreurAbandon.textContent = 'Choisissez d’abord le joueur.'; return; }
+          retirerPartout(id);
+          b.abandons.push(id);
+          sauver();
+          annoncer(`${nom(id)} retiré de sa poule`);
+          dessiner();
+        }),
+        erreurAbandon,
+        b.abandons.length > 0 ? h('ul', { class: 'liste-simple', 'aria-label': 'Blessés en cours de soirée' }, b.abandons.map((id) => h('li', null,
+          h('div', { class: 'rangee' },
+            h('span', null, `${nom(id)}, blessé : pas de point`),
+            h('button', {
+              type: 'button', class: 'bouton-texte',
+              onclick: () => { b.abandons = b.abandons.filter((x) => x !== id); sauver(); dessiner(); },
+            }, `Remettre ${nom(id)}`))))) : null);
+    };
 
     const majProgression = () => {
       const cls = classementsDePoules(b);
@@ -795,6 +889,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
         }, `Poule ${LETTRES[i]}`)))
       : null;
 
+    dessinerAbandon();
     dessinerPoule();
     return [
       h('h1', null, 'Les matchs'),
@@ -803,6 +898,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
       progression,
       zoneMatchs,
       zoneClassement,
+      zoneAbandon,
       h('div', { class: 'barre-action' },
         h('button', { type: 'button', class: 'bouton-second', onclick: () => aller('composition') }, 'Poules'),
         suivant),
@@ -914,7 +1010,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
   // ---------------------------------------------------------- 3d. classement de la soirée
 
   function etapeOrdre() {
-    b.ordre = b.ordre.filter((id) => b.presents.includes(id));
+    b.ordre = b.ordre.filter((id) => jouent(b).includes(id));
     const classes = h('ol', { class: 'ordre', 'aria-label': 'Classement de la soirée' });
     const restants = h('ul', { class: 'puces', 'aria-label': 'Joueurs à classer' });
     const voirPoints = /** @type {HTMLButtonElement} */ (h('button', { type: 'button', class: 'bouton', onclick: () => aller('verification') }, 'Voir les points'));
@@ -928,14 +1024,14 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
           h('button', { type: 'button', 'aria-label': `Monter ${nom(id)}`, disabled: i === 0, onclick: () => { [b.ordre[i - 1], b.ordre[i]] = [b.ordre[i], b.ordre[i - 1]]; sauver(); majListes(); } }, '↑'),
           h('button', { type: 'button', 'aria-label': `Descendre ${nom(id)}`, disabled: i === b.ordre.length - 1, onclick: () => { [b.ordre[i + 1], b.ordre[i]] = [b.ordre[i], b.ordre[i + 1]]; sauver(); majListes(); } }, '↓'),
           h('button', { type: 'button', 'aria-label': `Retirer ${nom(id)} du classement`, onclick: () => { b.ordre.splice(i, 1); sauver(); majListes(); } }, '✕')))));
-      const reste = b.presents.filter((id) => !b.ordre.includes(id)).sort((x, y) => alpha(nom(x), nom(y)));
+      const reste = jouent(b).filter((id) => !b.ordre.includes(id)).sort((x, y) => alpha(nom(x), nom(y)));
       remplir(restants, reste.map((id) => h('li', null, h('button', {
         type: 'button', class: 'puce', onclick: () => { b.ordre.push(id); sauver(); majListes(); },
       }, nom(id)))));
       voirPoints.disabled = reste.length > 0;
       etatTexte.textContent = reste.length > 0
         ? `Encore ${pluriel(reste.length, 'joueur')} à placer : touchez-les dans l’ordre d’arrivée.`
-        : `Tout le monde est placé : le 1er marque ${b.presents.length} points, le dernier 1 point.`;
+        : `Tout le monde est placé : le 1er marque ${jouent(b).length} points, le dernier 1 point.`;
     };
     majListes();
     return [
@@ -956,10 +1052,10 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
     const liste = h('ol', { class: 'ordre points-libres' });
     const total = h('p', { class: 'aide', role: 'status' });
     const majTotal = () => {
-      const t = b.presents.reduce((s, id) => s + (b.points[String(id)] ?? 0), 0);
+      const t = jouent(b).reduce((s, id) => s + (b.points[String(id)] ?? 0), 0);
       total.textContent = `Total distribué : ${pluriel(t, 'point')}.`;
     };
-    for (const id of [...b.presents].sort((x, y) => alpha(nom(x), nom(y)))) {
+    for (const id of jouent(b).sort((x, y) => alpha(nom(x), nom(y)))) {
       const champ = /** @type {HTMLInputElement} */ (h('input', {
         type: 'number', inputmode: 'numeric', min: '0', max: '99', step: '1', id: `pts-${id}`,
         value: String(b.points[String(id)] ?? ''),
@@ -1073,7 +1169,7 @@ export async function ecranSaisie(vue, [date, etapeDemandee]) {
           marquer();
           return h('tr', null,
             h('td', { class: 'rang' }, r.place ? ordinal(r.place) : ''),
-            h('td', null, nom(r.joueur_id), h('br'), repere),
+            h('td', null, nom(r.joueur_id), b.blesses.includes(r.joueur_id) ? h('small', null, ' (présent, ne joue pas)') : null, h('br'), repere),
             h('td', { class: 'nombre' }, champ));
         }))),
       h('p', { class: 'aide' }, 'Les points se corrigent à la main si besoin, avant d’enregistrer.'),

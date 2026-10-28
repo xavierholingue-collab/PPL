@@ -41,6 +41,18 @@
  */
 export const DEPART_BAREME_POULE = 12;
 
+/**
+ * Joueurs blessés (David, 28/10/2026) :
+ * - présent mais incapable de jouer de la soirée : 1 point, sans place ; il
+ *   ne compte pas dans le nombre de joueurs classés (14 joueurs jouent : le
+ *   1er prend 14 pts, le blessé présent 1 pt en plus) ;
+ * - blessé en cours de poule : il sort de la poule, ses matchs ne comptent
+ *   pas, et il ne prend pas de point (« pas de point pour un joueur blessé »).
+ * À CONFIRMER : ces deux lectures sont des hypothèses, posées le 28/10/2026
+ * en attendant la réponse de David.
+ */
+export const POINTS_PRESENT_SANS_JOUER = 1;
+
 /** Les quatre issues possibles d'un match en deux sets gagnants, vues du joueur de gauche. */
 export const ISSUES = /** @type {const} */ ([[2, 0], [2, 1], [1, 2], [0, 2]]);
 
